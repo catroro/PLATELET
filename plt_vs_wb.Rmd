@@ -24,6 +24,7 @@ source("/gpfs/home/cather01/platelet/ToshCode/geneset_analysis_functions.R")
 ```{r paths}
 path.harp <- "/gpfs/data/abl/home/cather01/rugglesLab/HARP/"
 path.pace <- "/gpfs/data/abl/home/cather01/rugglesLab/PACE/"
+out.path = "/gpfs/data/abl/home/cather01/rugglesLab/poubelle/"
 
 # out.path.harp <- "/gpfs/data/abl/home/cather01/rugglesLab/HARP/"
 # out.path.pace <- "/gpfs/data/abl/home/cather01/rugglesLab/PACE/"
@@ -42,7 +43,7 @@ metadata.harp <- read_excel(paste0(path.harp,"DATA/Metadata HARP for RNAseq 12_1
 
 # Read counts data and metadata for PACE cohort
 wb.count.pace <- read.table(paste0(path.pace,"DATA/pace_wb_quant.featurecounts.counts.unstr.txt"), sep = "\t", header = TRUE, row.names = 1, comment.char = "")
-plt.count.pace <- read.table(paste0(path.harp,"DATA/pace_platelet_quant.featurecounts.counts.unstr.txt"), sep = "\t", header = TRUE, row.names = 1, comment.char = "")
+plt.count.pace <- read.table(paste0(path.pace,"DATA/pace_platelet_quant.featurecounts.counts.unstr.txt"), sep = "\t", header = TRUE, row.names = 1, comment.char = "")
 metadata.pace <- read.csv(paste0(path.pace,"DATA/pace_and_thr_metadata.csv"))
 
 ```
@@ -209,6 +210,9 @@ print(p)
 print(p2)
 dev.off()
 
+write.csv(gene.out.df.harp, paste0(path.harp, "DATA/shared_genes_post-process.csv"), row.names=FALSE)
+write.csv(gene.out.df.pace, paste0(path.pace, "DATA/shared_genes_post-process.csv"), row.names=FALSE)
+
 ```
 
 
@@ -291,7 +295,7 @@ top.genes.wb.pace <- gene.out.df.pace.rank %>%
 
 top.genes.plt.pace <- gene.out.df.pace.rank %>%
   arrange(plt_rank) %>%  
-  slice_head(n = 20) 
+  slice_head(n = 100) 
 
 
 plt.genes.sub <- top.genes.plt.pace[, c("gene", "plt_rank", "wb_rank", "plt_avg_log2")]%>%  
@@ -308,7 +312,7 @@ p <- (ggplot(plt.genes.sub, aes(axis1 = plt_rank, axis2 = wb_rank , y = plt_avg_
                       + scale_x_continuous( breaks = c(1, 2), labels = c("PLT ranking", "WB ranking"))
                       + scale_fill_manual(values = pal))
 
-save_plot(p, "pace_analysis/", "PLTalluvium_plot_ranking.pdf")
+# save_plot(p, "pace_analysis/", "PLTalluvium_plot_ranking.pdf")
 wb.genes.sub <- top.genes.wb.pace[, c("gene", "plt_rank", "wb_rank", "wb_avg_log2")]%>%  
   slice_head(n = 20) 
 p <- (ggplot(wb.genes.sub, aes(axis1 = wb_rank, axis2 = plt_rank , y = wb_avg_log2)) 
@@ -321,25 +325,25 @@ p <- (ggplot(wb.genes.sub, aes(axis1 = wb_rank, axis2 = plt_rank , y = wb_avg_lo
                       + scale_x_discrete( limits = c("WB ranking", "PLT ranking"))
                       + scale_fill_manual(values = pal))
 
-save_plot(p, "pace_analysis/", "WBalluvium_plot_ranking.pdf")
+# save_plot(p, "pace_analysis/", "WBalluvium_plot_ranking.pdf")
 
 # Creating a tabular representation
-tabular_data.pace.plt <- top.genes.plt.pace %>%
-  dplyr::select(gene,plt_rank, plt_avg,wb_rank, wb_avg) %>%
-  kbl("html", col.names = c("Gene", "Rank", "Avg expr", "Rank", "Avg expr")) %>%
-  kable_styling(bootstrap_options = "striped", full_width = F) %>%
-  add_header_above(c(" " = 1, "Platelet" = 2, "Whole blood" = 2))%>%
-  kable_minimal()%>%
-  save_kable(paste0(out.path, "pace_analysis/", "PLTtable_topgenes.html"))
-
-
-tabular_data.pace.wb <- top.genes.wb.pace %>%
-  dplyr::select(gene,wb_rank, wb_avg, plt_rank, plt_avg) %>%
-  kbl("html", col.names = c("Gene", "Rank", "Avg expr", "Rank", "Avg expr")) %>%
-  kable_styling(bootstrap_options = "striped", full_width = F) %>%
-  add_header_above(c(" " = 1, "Whole blood" = 2, "Platelet" = 2))%>%
-  kable_minimal()%>%
-  save_kable(paste0(out.path,"pace_analysis/", "WBtable_topgenes.html"))
+# tabular_data.pace.plt <- top.genes.plt.pace %>%
+#   dplyr::select(gene,plt_rank, plt_avg,wb_rank, wb_avg) %>%
+#   kbl("html", col.names = c("Gene", "Rank", "Avg expr", "Rank", "Avg expr")) %>%
+#   kable_styling(bootstrap_options = "striped", full_width = F) %>%
+#   add_header_above(c(" " = 1, "Platelet" = 2, "Whole blood" = 2))%>%
+#   kable_minimal()%>%
+#   save_kable(paste0(out.path, "pace_analysis/", "PLTtable_topgenes.html"))
+# 
+# 
+# tabular_data.pace.wb <- top.genes.wb.pace %>%
+#   dplyr::select(gene,wb_rank, wb_avg, plt_rank, plt_avg) %>%
+#   kbl("html", col.names = c("Gene", "Rank", "Avg expr", "Rank", "Avg expr")) %>%
+#   kable_styling(bootstrap_options = "striped", full_width = F) %>%
+#   add_header_above(c(" " = 1, "Whole blood" = 2, "Platelet" = 2))%>%
+#   kable_minimal()%>%
+#   save_kable(paste0(out.path,"pace_analysis/", "WBtable_topgenes.html"))
 
  nonMatch_Uniquedf2 <-top.genes.wb.pace %>% 
    filter( top.genes.wb.pace$gene %in% top.genes.plt.pace$gene) #For df2 values not in df1
@@ -347,23 +351,24 @@ tabular_data.pace.wb <- top.genes.wb.pace %>%
  
  deg_wb = top.genes.wb.pace$gene
  deg_plt = top.genes.plt.pace$gene
-
  deg_wb_entrez <- (mapIds(org.Hs.eg.db, keys = deg_wb, column = "ENTREZID", keytype = "SYMBOL"))
  deg_plt_entrez <- (mapIds(org.Hs.eg.db, keys = deg_plt, column = "ENTREZID", keytype = "SYMBOL"))
 
- gene_ids_list <- list(wb = deg_wb_entrez, plt = deg_plt_entrez)
+ go.wb <- enrichGO(deg_wb_entrez, OrgDb=org.Hs.eg.db,pvalueCutoff  = 0.05)
+ go.plt <- enrichGO(deg_plt_entrez, OrgDb=org.Hs.eg.db,pvalueCutoff  = 0.05)
 
- do.wb = enrichDO(deg_wb_entrez)
- do.plt = enrichDO(deg_plt_entrez)
-
- go.wb <- enrichGO(deg_wb_entrez)
- ck <- compareCluster(geneCluster = gene_ids_list, fun = enrichKEGG )   #,  OrgDb='org.Hs.eg.db')
- ck2 <- compareCluster(geneCluster = gene_ids_list, fun = enrichGO,  OrgDb='org.Hs.eg.db')
+ kegg.wb <- enrichKEGG(deg_wb_entrez,pvalueCutoff  = 0.05)
+ kegg.plt <- enrichKEGG(deg_plt_entrez,pvalueCutoff  = 0.05)
+  
+# gene_ids_list <- list(wb = deg_wb_entrez, plt = deg_plt_entrez)
+ # ck <- compareCluster(geneCluster = gene_ids_list, fun = enrichKEGG )   #,  OrgDb='org.Hs.eg.db')
+ # ck2 <- compareCluster(geneCluster = gene_ids_list, fun = enrichGO,  OrgDb='org.Hs.eg.db')
  
- dotplot(ck2, showCategory=20)
- dotplot(ck, showCategory=20)
- dotplot(do.wb, showCategory=20)
- dotplot(do.plt, showCategory=20)
+  dotplot(kegg.wb, showCategory=20, title = "KEGG - whole blood")
+  dotplot(kegg.plt, showCategory=20, title = "KEGG - platelet")
+  dotplot(go.wb, showCategory=20, title = "GO - whole blood")
+  dotplot(go.plt, showCategory=10, title = "GO - platelet") 
+
 
 ```
 
@@ -399,7 +404,7 @@ p <- (ggplot(plt.genes.sub, aes(axis1 = plt_rank, axis2 = wb_rank , y = plt_avg_
                       + scale_x_continuous( breaks = c(1, 2), labels = c("PLT ranking", "WB ranking"))
                       + scale_fill_manual(values = pal))
 
-save_plot(p, "harp_analysis/", "PLTalluvium_plot_ranking.pdf")
+# save_plot(p, "harp_analysis/", "PLTalluvium_plot_ranking.pdf")
 wb.genes.sub <- top.genes.wb.harp[, c("gene", "plt_rank", "wb_rank", "wb_avg_log2")]%>%  
   slice_head(n = 20) 
 p <- (ggplot(wb.genes.sub, aes(axis1 = wb_rank, axis2 = plt_rank , y = wb_avg_log2)) 
@@ -412,26 +417,26 @@ p <- (ggplot(wb.genes.sub, aes(axis1 = wb_rank, axis2 = plt_rank , y = wb_avg_lo
                       + scale_x_discrete( limits = c("WB ranking", "PLT ranking"))
                       + scale_fill_manual(values = pal))
 
-save_plot(p, "harp_analysis/", "WBalluvium_plot_ranking.pdf")
+# save_plot(p, "harp_analysis/", "WBalluvium_plot_ranking.pdf")
 
 
 # Creating a tabular representation
-tabular_data.harp.plt <- top.genes.plt.harp %>%
-  dplyr::select(gene,plt_rank, plt_avg,wb_rank, wb_avg) %>%
-  kbl("html", col.names = c("Gene", "Rank", "Avg expr", "Rank", "Avg expr")) %>%
-  kable_styling(bootstrap_options = "striped", full_width = F) %>%
-  add_header_above(c(" " = 1, "Platelet" = 2, "Whole blood" = 2))%>%
-  kable_minimal()%>%
-  save_kable(paste0(out.path,"harp_analysis/","PLTtable_topgenes.html"))
-
-
-tabular_data.harp.wb <- top.genes.wb.harp %>%
-  dplyr::select(gene,wb_rank, wb_avg, plt_rank, plt_avg) %>%
-  kbl("html", col.names = c("Gene", "Rank", "Avg expr", "Rank", "Avg expr")) %>%
-  kable_styling(bootstrap_options = "striped", full_width = F) %>%
-  add_header_above(c(" " = 1, "Whole blood" = 2, "Platelet" = 2))%>%
-  kable_minimal()%>%
-  save_kable(paste0(out.path,"harp_analysis/","WBtable_topgenes.html"))
+# tabular_data.harp.plt <- top.genes.plt.harp %>%
+#   dplyr::select(gene,plt_rank, plt_avg,wb_rank, wb_avg) %>%
+#   kbl("html", col.names = c("Gene", "Rank", "Avg expr", "Rank", "Avg expr")) %>%
+#   kable_styling(bootstrap_options = "striped", full_width = F) %>%
+#   add_header_above(c(" " = 1, "Platelet" = 2, "Whole blood" = 2))%>%
+#   kable_minimal()%>%
+#   save_kable(paste0(out.path,"harp_analysis/","PLTtable_topgenes.html"))
+# 
+# 
+# tabular_data.harp.wb <- top.genes.wb.harp %>%
+#   dplyr::select(gene,wb_rank, wb_avg, plt_rank, plt_avg) %>%
+#   kbl("html", col.names = c("Gene", "Rank", "Avg expr", "Rank", "Avg expr")) %>%
+#   kable_styling(bootstrap_options = "striped", full_width = F) %>%
+#   add_header_above(c(" " = 1, "Whole blood" = 2, "Platelet" = 2))%>%
+#   kable_minimal()%>%
+#   save_kable(paste0(out.path,"harp_analysis/","WBtable_topgenes.html"))
 
 
  
@@ -441,18 +446,22 @@ tabular_data.harp.wb <- top.genes.wb.harp %>%
  deg_wb_entrez <- (mapIds(org.Hs.eg.db, keys = deg_wb, column = "ENTREZID", keytype = "SYMBOL"))
  deg_plt_entrez <- (mapIds(org.Hs.eg.db, keys = deg_plt, column = "ENTREZID", keytype = "SYMBOL"))
 
- gene_ids_list <- list(wb = deg_wb_entrez, plt = deg_plt_entrez)
 
- do.wb = enrichDO(deg_wb_entrez)
- do.plt = enrichDO(deg_plt_entrez)
+ go.wb = enrichGO(deg_wb_entrez, OrgDb=org.Hs.eg.db,pvalueCutoff  = 0.05)
+ go.plt = enrichGO(deg_plt_entrez, OrgDb=org.Hs.eg.db,pvalueCutoff  = 0.05)
 
- ck <- compareCluster(geneCluster = gene_ids_list, fun = enrichKEGG )   #,  OrgDb='org.Hs.eg.db')
- ck2 <- compareCluster(geneCluster = gene_ids_list, fun = enrichGO,  OrgDb='org.Hs.eg.db')
+ kegg.wb = enrichKEGG(deg_wb_entrez, pvalueCutoff  = 0.05)
+ kegg.plt = enrichKEGG(deg_plt_entrez, pvalueCutoff  = 0.05)
+ # gene_ids_list <- list(wb = deg_wb_entrez, plt = deg_plt_entrez)
+ # ck <- compareCluster(geneCluster = gene_ids_list, fun = enrichKEGG )   #,  OrgDb='org.Hs.eg.db')
+ # ck2 <- compareCluster(geneCluster = gene_ids_list, fun = enrichGO,  OrgDb='org.Hs.eg.db')
+ # dotplot(ck2, showCategory=20)
+ # dotplot(ck, showCategory=20)
  
- dotplot(ck2, showCategory=20)
- dotplot(ck, showCategory=20)
- dotplot(do.wb, showCategory=20)
- dotplot(do.plt, showCategory=20)
+  dotplot(kegg.wb, showCategory=20, title = "KEGG - whole blood")
+  dotplot(kegg.plt, showCategory=20, title = "KEGG - platelet")
+  dotplot(go.wb, showCategory=20, title = "GO - whole blood")
+  dotplot(go.plt, showCategory=10, title = "GO - platelet") 
 
 ```
 
