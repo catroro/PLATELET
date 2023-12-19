@@ -1,0 +1,682 @@
+---
+title: "harp_pltVSwb_analysis"
+output: html_document
+date: "2023-11-27"
+---
+
+```{r setup, include=FALSE}
+packages.list <- c("psych", "clusterProfiler", "ggplot2", "smplot2", "colorRamp2", "dplyr", "grDevices", "gt", "kableExtra","VennDiagram", "readxl", "ggalluvial", "RColorBrewer","viridis","DOSE", "org.Hs.eg.db", "enrichR")
+for (package in packages.list) {
+  if (!require(package, character.only = TRUE)) {
+    install.packages(package)
+  }
+}
+sapply(packages.list, library, character.only = TRUE)
+
+source("./ToshCode/rnaseq_processing_functions.R")
+source("./ToshCode/mgc_plotting_functions.R")
+source("./ToshCode/geneset_analysis_functions.R")
+#install.packages("devtools")
+#devtools::install_github('smin95/smplot2')
+```
+
+
+```{r load}
+# Read counts data and metadata for HARP cohort
+wb.count.harp <- read.table("./HARP/wb_quant.featurecounts.counts.unstr.txt", sep = "\t", header = TRUE, row.names = 1, comment.char = "")
+plt.count.harp <- read.table("./HARP/plt_quant.featurecounts.counts.unstr.txt", sep = "\t", header = TRUE, row.names = 1, comment.char = "")
+metadata.harp <- read_excel("/gpfs/data/abl/home/cather01/rugglesLab/HARP/Metadata HARP for RNAseq 12_12_2022x.xlsx")
+
+# Read counts data and metadata for PACE cohort
+wb.count.pace <- read.table("./PACE/pace_wb_quant.featurecounts.counts.unstr.txt", sep = "\t", header = TRUE, row.names = 1, comment.char = "")
+plt.count.pace <- read.table("./PACE/pace_platelet_quant.featurecounts.counts.unstr.txt", sep = "\t", header = TRUE, row.names = 1, comment.char = "")
+metadata.pace <- read.csv("/gpfs/data/abl/home/cather01/rugglesLab/PACE/pace_and_thr_metadata.csv")
+
+# Set output path
+out.path = "/gpfs/data/abl/home/cather01/rugglesLab/plt_vs_wb/"
+
+# Define color palette for plots
+pal <- c("#CAE1FF", "#20B2AA", "#FFA500", "#DC143C", "#8FBC8F", "#36648B", "#8B8B83", "#FFB6C1", "#DA70D6", "#CD5B45", "#FFD39B", "#BDFCC9", "#698B22", "#FFC125", "#AB82FF", "#5E2612", "#F0E68C", "#4876FF", "#00CED1", "#1B9E77", "#D95F02", "#7570B3", "#E7298A", "#66A61E", "#E6AB02", "#A6761D", "#666666","#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00")
+
+
+```
+
+```{r function}
+
+# Define the function to save plots
+save_plot <- function(plot, cohort, filename) {
+  print(paste0(out.path, cohort))
+  dir.create(paste0(out.path, cohort), showWarnings = FALSE, recursive = TRUE)
+  ggsave(paste0(out.path, cohort, filename), plot, width = 8, height = 6)
+}
+```
+
+
+```{r preprocessing}
+
+# Function for preprocessing and normalization
+preprocess_and_normalize <- function(count.table, tissue, sample_outfilepath, label_extreme_changes) {
+  # Create output directory
+  dir.create(sample_outfilepath, showWarnings = FALSE, recursive = TRUE)
+  # Filter for Read Count
+  list.filter.read <- QC_filter_readcount(count.table, minreadcutoff = 1000000 )
+
+  print("QC reads done")
+  save_plot(list.filter.read$prefilterhist, sample_outfilepath, "prefiltered_samp_readcount_hist.pdf")
+  save_plot(list.filter.read$postfilterhist, sample_outfilepath, "postfiltered_samp_readcount_hist.pdf")
+  # Filter for Gene Count
+  minsamplescutoff <- round(ncol(list.filter.read$counttabfilt)/2)
+  list.filter.gene <- QC_filter_genecount(list.filter.read$counttabfilt, mincountcutoff = 8, minsamplescutoff)
+  print("QC genes done")
+  save_plot(list.filter.gene$prefilterhist, sample_outfilepath, "prefiltered_gene_rowmeans_hist.pdf")
+  save_plot(list.filter.gene$postfilterhist, sample_outfilepath, "postfiltered_gene_rowmeans_hist.pdf")
+
+  # Create dummy metadata
+  dummymeta <- data.frame(tissue = rep(tissue, ncol(list.filter.gene$counttabfilt)), row.names = colnames(list.filter.gene$counttabfilt))
+
+    # DESeq normalization
+  normalization_out <- DEseq_Normalization(list.filter.gene$counttabfilt, dummymeta, sample_outfilepath, label_extreme_changes)
+  print("DESeq2 done")
+  # Manually remove extreme outliers
+  normcounttab <- normalization_out[[1]][,!colnames(normalization_out[[1]]) %in% rownames(normalization_out$deseqnorm_outliers)]
+  return(normcounttab)
+}
+
+# Preprocess and normalize for WB
+wb.norm.count.harp <- preprocess_and_normalize(wb.count.harp, "WB", "harp_preprocessing/harp_wb/", FALSE)
+
+# Preprocess and normalize for Platelet
+plt.norm.count.harp <- preprocess_and_normalize(plt.count.harp, "platelet", "harp_preprocessing/harp_platelet/", FALSE)
+
+
+wb.norm.count.pace <- preprocess_and_normalize(wb.count.pace, "WB", "pace_preprocessing/pace_wb/", FALSE)
+
+# Preprocess and normalize for Platelet
+plt.count.pace <- plt.count.pace[,grepl("PACE", colnames(plt.count.pace))] ## GRABBING ONLY PACE SAMPLES
+plt.norm.count.pace <- preprocess_and_normalize(plt.count.pace, "platelet", "pace_preprocessing/pace_platelet/", FALSE)
+
+
+dim(plt.norm.count.pace)
+dim(wb.norm.count.pace)
+colnames(wb.norm.count.pace)
+```
+
+```{r sharedFeatures}
+############### FOR PACE ###############
+colnames(plt.norm.count.pace) <- gsub("_", "", colnames(plt.norm.count.pace))
+
+# Select shared samples and genes, and then select the corresponding tables
+# Shared samples are those present in both wb.norm.count and plt.norm.count
+# Shared genes are those present in both plt.norm.count and wb.norm.count
+shared.samples.pace <- intersect(colnames(wb.norm.count.pace), colnames(plt.norm.count.pace))
+shared.genes.pace <- intersect(rownames(plt.norm.count.pace), rownames(wb.norm.count.pace))
+
+# Create matrices containing only shared samples and genes
+shared.wb.mtx.pace <- wb.norm.count.pace[shared.genes.pace, shared.samples.pace]
+shared.plt.mtx.pace <- plt.norm.count.pace[shared.genes.pace, shared.samples.pace]
+
+################# FOR HARP #################
+# Replace underscores in column names with dots
+colnames(wb.norm.count.harp) <- gsub("_", ".", colnames(wb.norm.count.harp))
+shared.samples.harp <- intersect(colnames(wb.norm.count.harp), colnames(plt.norm.count.harp))
+shared.genes.harp <- intersect(rownames(plt.norm.count.harp), rownames(wb.norm.count.harp))
+
+shared.wb.mtx.harp <- wb.norm.count.harp[shared.genes.harp, shared.samples.harp]
+shared.plt.mtx.harp <- plt.norm.count.harp[shared.genes.harp, shared.samples.harp]
+
+
+# Create a directory for HARP analyses (if it doesn't exist)
+dir.create(paste0(out.path, "harp_analyses/"), showWarnings = FALSE, recursive = TRUE)
+dir.create(paste0(out.path, "pace_analyses/"), showWarnings = FALSE, recursive = TRUE)
+
+# Write shared matrices to CSV files
+write.table(shared.wb.mtx.harp, 
+            paste0(out.path, "harp_analyses/", "harp_wb_shared_normcounttab.csv"), sep = ",", col.names = NA, row.names = TRUE)
+write.table(shared.plt.mtx.harp, 
+            paste0(out.path, "harp_analyses/", "harp_platelet_shared_normcounttab.csv"), sep = ",", col.names = NA, row.names = TRUE)
+
+write.table(shared.wb.mtx.pace, 
+            paste0(out.path, "pace_analyses/", "pace_wb_shared_normcounttab.csv"), sep = ",", col.names = NA, row.names = TRUE)
+write.table(shared.plt.mtx.pace, 
+            paste0(out.path, "pace_analyses/", "pace_platelet_shared_normcounttab.csv"), sep = ",", col.names = NA, row.names = TRUE)
+
+dim(shared.plt.mtx.harp)
+dim(shared.wb.mtx.pace)
+
+```
+
+
+```{r sharedAnalysis}
+
+
+gene.out.df.harp <- data.frame()
+gene.out.df.pace <- data.frame()
+
+
+for (gene in shared.genes.pace) {
+    wb.gene.expr.pace <- t(shared.wb.mtx.pace[gene,,drop=FALSE])
+    plt.gene.expr.pace <- t(shared.plt.mtx.pace[gene,,drop=FALSE])
+    corr.plt.wb.pace <- corr.test(wb.gene.expr.pace, plt.gene.expr.pace, method = "spearman")
+    
+    gene.out.df.pace <- rbind(gene.out.df.pace, c(gene, median(wb.gene.expr.pace), median(plt.gene.expr.pace), corr.plt.wb.pace$r[1,1], corr.plt.wb.pace$p[1,1]))
+}
+for (gene in shared.genes.harp) {
+    wb.gene.expr.harp <- t(shared.wb.mtx.harp[gene,,drop=FALSE])
+    plt.gene.expr.harp <- t(shared.plt.mtx.harp[gene,,drop=FALSE])
+    corr.plt.wb.harp <- corr.test(wb.gene.expr.harp, plt.gene.expr.harp, method = "spearman")
+    
+    gene.out.df.harp <- rbind(gene.out.df.harp, c(gene, median(wb.gene.expr.harp), median(plt.gene.expr.harp), corr.plt.wb.harp$r[1,1], corr.plt.wb.harp$p[1,1]))
+}
+
+
+colnames(gene.out.df.harp) <- c("gene", "wb_avg", "plt_avg", "Rval", "Pval")
+colnames(gene.out.df.pace) <- c("gene", "wb_avg", "plt_avg", "Rval", "Pval")
+
+gene.out.df.harp[,c("wb_avg", "plt_avg", "Rval", "Pval")] <- apply(gene.out.df.harp[,c("wb_avg", "plt_avg", "Rval", "Pval")], 2, as.numeric)
+gene.out.df.pace[,c("wb_avg", "plt_avg", "Rval", "Pval")] <- apply(gene.out.df.pace[,c("wb_avg", "plt_avg", "Rval", "Pval")], 2, as.numeric)
+
+gene.out.df.harp[, c("wb_avg_log2", "plt_avg_log2")] <- log2(gene.out.df.harp[, c("wb_avg", "plt_avg")] + 1)
+gene.out.df.pace[, c("wb_avg_log2", "plt_avg_log2")] <- log2(gene.out.df.pace[, c("wb_avg", "plt_avg")] + 1)
+
+p <- (ggplot(gene.out.df.pace, aes(x=wb_avg_log2, y=plt_avg_log2)) 
+                      + geom_point(alpha=0.3, size=1) 
+                      + theme_bw()  
+                      + sm_statCorr(corr_method = 'spearman', color = '#8DD3C7')
+                      + ggtitle("PACE: Whole blood expression correlate to platelet expression")
+                      + xlab("Whole blood expression (log2)")
+                      + ylab("Platelet expression (log2)")
+)
+
+p2 <- (ggplot(gene.out.df.harp, aes(x=wb_avg_log2, y=plt_avg_log2)) 
+                      + geom_point(alpha=0.3, size=1) 
+                      + theme_bw()  
+                      + sm_statCorr(corr_method = 'spearman', color = '#8DD3C7')
+                      + ggtitle("HARP: Whole blood expression correlate to platelet expression")
+                      + xlab("Whole blood expression (log2)")
+                      + ylab("Platelet expression (log2)")
+)
+
+
+pdf(paste0(out.path, "scatterplot_plt_wb.pdf"))
+print(p)
+print(p2)
+dev.off()
+
+```
+
+
+
+
+```{r overall}
+overall_expression <- function(df){
+  # Ad hoc function to bin genes based on log2(expression) thresholds
+  bin_genes <- function(df, thresholds, col) {
+    bins <- cut(df[[col]], breaks = c(-Inf, thresholds, Inf), labels = FALSE, include.lowest = TRUE)
+    df$ExpressionBin <- bins
+    return(df)
+  }
+  
+  plot_bin <- function(df, tissue){
+    bin.summary <- df %>%
+    group_by(ExpressionBin) %>%
+    summarise(mean_Rval = mean(Rval),
+              log2_expression = mean(avg_log2)) 
+    
+    # Plot using ggplot
+    p <- (ggplot(bin.summary, aes(x = log2_expression, y = mean_Rval)) 
+                    + geom_point() 
+                    + labs(x = 'Expression Bin', 
+                          y = 'Mean Rval', 
+                          title = paste0(tissue, ": Correlations over a range of log2(Expression) thresholds"))
+                    + theme_minimal())
+    
+    p2 <- df %>%
+          mutate( bin=cut_width(avg_log2, width=1, boundary=0) ) %>%
+          ggplot( aes(x=bin, y=Rval) ) +
+              geom_boxplot(fill="#69b3a2") +
+              xlab(tissue)+
+              ggtitle(paste0(tissue, ": Overall expression")) +
+              theme_minimal()
+    plots <- list(p, p2)
+    names(plots) <- c(paste0(tissue, "point"), paste0(tissue, "box"))
+    return(plots)
+  }
+  # For example, thresholds <- seq(0, 10, by = 1)
+  print(paste0("max: ", max(df$plt_avg_log2)))
+  thresholds <- seq(0, 50, by = 0.1)
+  df.bin.wb <- bin_genes(df, thresholds,"wb_avg_log2")
+  df.bin.wb$avg_log2 <- df.bin.wb$wb_avg_log2
+
+  df.bin.plt <- bin_genes(df, thresholds,"plt_avg_log2")
+  df.bin.plt$avg_log2 <- df.bin.plt$plt_avg_log2
+
+  plots <- plot_bin(df.bin.wb, "WB")
+  plots2 <- plot_bin(df.bin.plt, "PLT")
+  plots <- c(plots, plots2)
+  return(plots)
+    
+}
+
+plots.pace <- overall_expression(gene.out.df.pace)
+for(plot.name in names(plots.pace)){
+  p <- plots.pace[[plot.name]]
+  save_plot(p, "pace_analysis/", paste0(plot.name, "_plot_overall_expression.pdf"))
+}
+plots.harp <- overall_expression(gene.out.df.harp)
+for(plot.name in names(plots.harp)){
+  p <- plots.harp[[plot.name]]
+  save_plot(p, "harp_analysis/", paste0(plot.name, "_plot_overall_expression.pdf"))
+}
+
+```
+
+```{r topgenesPACE}
+
+dim(gene.out.df.pace)
+
+gene.out.df.pace.rank <- gene.out.df.pace %>%
+  mutate(plt_rank = rank(-plt_avg),
+          wb_rank = rank(-wb_avg))
+
+top.genes.wb.pace <- gene.out.df.pace.rank %>%
+  arrange(wb_rank) %>%  # Arrange by absolute value of Rval in descending order
+  slice_head(n = 100) 
+
+top.genes.plt.pace <- gene.out.df.pace.rank %>%
+  arrange(plt_rank) %>%  
+  slice_head(n = 20) 
+
+
+plt.genes.sub <- top.genes.plt.pace[, c("gene", "plt_rank", "wb_rank", "plt_avg_log2")]%>%  
+  slice_head(n = 20) 
+nb.cols <- 20
+pal <- colorRampPalette(brewer.pal(8, "Set3"))(nb.cols)
+p <- (ggplot(plt.genes.sub, aes(axis1 = plt_rank, axis2 = wb_rank , y = plt_avg_log2)) 
+                      + geom_alluvium(aes(fill = gene)) 
+                      + geom_stratum(width = 0.2, aes(fill = gene)) 
+                      + theme_bw()  
+                      + labs(x = " ", y = " ") 
+                      + geom_text(stat = "stratum", aes(label = after_stat(stratum)))
+                      + ggtitle("Most higly expressed genes in platelet and whole blood")
+                      + scale_x_continuous( breaks = c(1, 2), labels = c("PLT ranking", "WB ranking"))
+                      + scale_fill_manual(values = pal))
+
+save_plot(p, "pace_analysis/", "PLTalluvium_plot_ranking.pdf")
+wb.genes.sub <- top.genes.wb.pace[, c("gene", "plt_rank", "wb_rank", "wb_avg_log2")]%>%  
+  slice_head(n = 20) 
+p <- (ggplot(wb.genes.sub, aes(axis1 = wb_rank, axis2 = plt_rank , y = wb_avg_log2)) 
+                      + geom_alluvium(aes(fill = gene)) 
+                      + geom_stratum(width = 0.2, aes(fill = gene)) 
+                      + geom_text(stat = "stratum", aes(label = after_stat(stratum)))
+                      + theme_bw()  
+                      + labs(x = " ", y = " ")                       
+                      + ggtitle("Most higly expressed genes in platelet and whole blood")
+                      + scale_x_discrete( limits = c("WB ranking", "PLT ranking"))
+                      + scale_fill_manual(values = pal))
+
+save_plot(p, "pace_analysis/", "WBalluvium_plot_ranking.pdf")
+
+# Creating a tabular representation
+tabular_data.pace.plt <- top.genes.plt.pace %>%
+  dplyr::select(gene,plt_rank, plt_avg,wb_rank, wb_avg) %>%
+  kbl("html", col.names = c("Gene", "Rank", "Avg expr", "Rank", "Avg expr")) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  add_header_above(c(" " = 1, "Platelet" = 2, "Whole blood" = 2))%>%
+  kable_minimal()%>%
+  save_kable(paste0(out.path, "pace_analysis/", "PLTtable_topgenes.html"))
+
+
+tabular_data.pace.wb <- top.genes.wb.pace %>%
+  dplyr::select(gene,wb_rank, wb_avg, plt_rank, plt_avg) %>%
+  kbl("html", col.names = c("Gene", "Rank", "Avg expr", "Rank", "Avg expr")) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  add_header_above(c(" " = 1, "Whole blood" = 2, "Platelet" = 2))%>%
+  kable_minimal()%>%
+  save_kable(paste0(out.path,"pace_analysis/", "WBtable_topgenes.html"))
+
+ nonMatch_Uniquedf2 <-top.genes.wb.pace %>% 
+   filter( top.genes.wb.pace$gene %in% top.genes.plt.pace$gene) #For df2 values not in df1
+
+ 
+ deg_wb = top.genes.wb.pace$gene
+ deg_plt = top.genes.plt.pace$gene
+
+ deg_wb_entrez <- (mapIds(org.Hs.eg.db, keys = deg_wb, column = "ENTREZID", keytype = "SYMBOL"))
+ deg_plt_entrez <- (mapIds(org.Hs.eg.db, keys = deg_plt, column = "ENTREZID", keytype = "SYMBOL"))
+
+ gene_ids_list <- list(wb = deg_wb_entrez, plt = deg_plt_entrez)
+
+ do.wb = enrichDO(deg_wb_entrez)
+ do.plt = enrichDO(deg_plt_entrez)
+
+ ck <- compareCluster(geneCluster = gene_ids_list, fun = enrichKEGG )   #,  OrgDb='org.Hs.eg.db')
+ ck2 <- compareCluster(geneCluster = gene_ids_list, fun = enrichGO,  OrgDb='org.Hs.eg.db')
+ 
+ dotplot(ck2, showCategory=20)
+ dotplot(ck, showCategory=20)
+ dotplot(do.wb, showCategory=20)
+ dotplot(do.plt, showCategory=20)
+
+```
+
+```{r topgenesHARP}
+
+dim(gene.out.df.harp)
+gene.out.df.harp.rank <- gene.out.df.harp %>%
+  mutate(plt_rank = as.integer(rank(-plt_avg)),
+          wb_rank = as.integer(rank(-wb_avg)))
+
+top.genes.wb.harp <- gene.out.df.harp.rank %>%
+  arrange(wb_rank) %>%  # Arrange by absolute value of Rval in descending order
+  slice_head(n = 100) 
+top.genes.plt.harp <- gene.out.df.harp.rank %>%
+  arrange(plt_rank) %>%  # Arrange by absolute value of Rval in descending order
+  slice_head(n = 100) 
+
+
+# nonMatch_Uniquedf1 <- top.genes.plt %>% 
+#   filter(top.genes.plt$gene %in% top.genes.wb$gene) #For df1 values not in df2
+
+plt.genes.sub <- top.genes.plt.harp[, c("gene", "plt_rank", "wb_rank", "plt_avg_log2")]%>%  
+  slice_head(n = 20) 
+nb.cols <- 20
+pal <- colorRampPalette(brewer.pal(8, "Set3"))(nb.cols)
+p <- (ggplot(plt.genes.sub, aes(axis1 = plt_rank, axis2 = wb_rank , y = plt_avg_log2)) 
+                      + geom_alluvium(aes(fill = gene)) 
+                      + geom_stratum(width = 0.2, aes(fill = gene)) 
+                      + theme_bw()  
+                      + labs(x = " ", y = " ") 
+                      + geom_text(stat = "stratum", aes(label = after_stat(stratum)))
+                      + ggtitle("Most higly expressed genes in platelet and whole blood")
+                      + scale_x_continuous( breaks = c(1, 2), labels = c("PLT ranking", "WB ranking"))
+                      + scale_fill_manual(values = pal))
+
+save_plot(p, "harp_analysis/", "PLTalluvium_plot_ranking.pdf")
+wb.genes.sub <- top.genes.wb.harp[, c("gene", "plt_rank", "wb_rank", "wb_avg_log2")]%>%  
+  slice_head(n = 20) 
+p <- (ggplot(wb.genes.sub, aes(axis1 = wb_rank, axis2 = plt_rank , y = wb_avg_log2)) 
+                      + geom_alluvium(aes(fill = gene)) 
+                      + geom_stratum(width = 0.2, aes(fill = gene)) 
+                      + geom_text(stat = "stratum", aes(label = after_stat(stratum)))
+                      + theme_bw()  
+                      + labs(x = " ", y = " ")                       
+                      + ggtitle("Most higly expressed genes in platelet and whole blood")
+                      + scale_x_discrete( limits = c("WB ranking", "PLT ranking"))
+                      + scale_fill_manual(values = pal))
+
+save_plot(p, "harp_analysis/", "WBalluvium_plot_ranking.pdf")
+
+
+# Creating a tabular representation
+tabular_data.harp.plt <- top.genes.plt.harp %>%
+  dplyr::select(gene,plt_rank, plt_avg,wb_rank, wb_avg) %>%
+  kbl("html", col.names = c("Gene", "Rank", "Avg expr", "Rank", "Avg expr")) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  add_header_above(c(" " = 1, "Platelet" = 2, "Whole blood" = 2))%>%
+  kable_minimal()%>%
+  save_kable(paste0(out.path,"harp_analysis/","PLTtable_topgenes.html"))
+
+
+tabular_data.harp.wb <- top.genes.wb.harp %>%
+  dplyr::select(gene,wb_rank, wb_avg, plt_rank, plt_avg) %>%
+  kbl("html", col.names = c("Gene", "Rank", "Avg expr", "Rank", "Avg expr")) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  add_header_above(c(" " = 1, "Whole blood" = 2, "Platelet" = 2))%>%
+  kable_minimal()%>%
+  save_kable(paste0(out.path,"harp_analysis/","WBtable_topgenes.html"))
+
+
+ 
+ deg_wb = top.genes.wb.harp$gene
+ deg_plt = top.genes.plt.harp$gene
+
+ deg_wb_entrez <- (mapIds(org.Hs.eg.db, keys = deg_wb, column = "ENTREZID", keytype = "SYMBOL"))
+ deg_plt_entrez <- (mapIds(org.Hs.eg.db, keys = deg_plt, column = "ENTREZID", keytype = "SYMBOL"))
+
+ gene_ids_list <- list(wb = deg_wb_entrez, plt = deg_plt_entrez)
+
+ do.wb = enrichDO(deg_wb_entrez)
+ do.plt = enrichDO(deg_plt_entrez)
+
+ ck <- compareCluster(geneCluster = gene_ids_list, fun = enrichKEGG )   #,  OrgDb='org.Hs.eg.db')
+ ck2 <- compareCluster(geneCluster = gene_ids_list, fun = enrichGO,  OrgDb='org.Hs.eg.db')
+ 
+ dotplot(ck2, showCategory=20)
+ dotplot(ck, showCategory=20)
+ dotplot(do.wb, showCategory=20)
+ dotplot(do.plt, showCategory=20)
+
+```
+
+
+```{r comparisonHARPPACE}
+
+top.gene.plt.com <- top.genes.plt.harp %>% 
+   filter(top.genes.plt.harp$gene %in% top.genes.plt.pace$gene)
+top.gene.wb.com <- top.genes.wb.harp %>% 
+   filter(top.genes.wb.harp$gene %in% top.genes.wb.pace$gene) 
+
+dim(top.gene.plt.com)
+dim(top.gene.wb.com)
+
+com.harp.pace <- merge(gene.out.df.harp, gene.out.df.pace, by = "gene", all = TRUE, suffixes = c(".harp", ".pace"))
+com.harp.pace <- na.omit(com.harp.pace)
+dim(com.harp.pace)
+
+p <- (ggplot(com.harp.pace, aes(x=wb_avg_log2.harp, y=wb_avg_log2.pace)) 
+                      + geom_point(alpha=0.3, size=1) 
+                      + theme_bw()  
+                      + sm_statCorr(corr_method = 'spearman', color = '#8DD3C7')
+                      + ggtitle("HARP: Whole blood expression correlate to PACE: Whole blood expression")
+                      + xlab("HARP: Whole blood expression (log2)")
+                      + ylab("PACE: Whole blood expression (log2)")
+)
+
+p2 <- (ggplot(com.harp.pace, aes(x=plt_avg_log2.harp, y=plt_avg_log2.pace)) 
+                      + geom_point(alpha=0.3, size=1) 
+                      + theme_bw()  
+                      + sm_statCorr(corr_method = 'spearman', color = '#8DD3C7')
+                      + ggtitle("HARP: Platelet expression correlate to PACE: Platelet expression")
+                      + xlab("HARP: Platelet expression (log2)")
+                      + ylab("PACE: Platelet expression (log2)")
+)
+
+pdf(paste0(out.path, "scatterplot_harp_pace.pdf"))
+print(p)
+print(p2)
+dev.off()
+
+library(RColorBrewer)
+myCol <- brewer.pal(3, "Pastel2")[c(1, 2)]
+
+gene.sets <- list(df1 = gene.out.df.harp$gene, df2 = gene.out.df.pace$gene)
+venn.plot <- venn.diagram(gene.sets, 
+                          category.names = c("HARP", "PACE"),
+                          filename = paste0(out.path, "venn_harp_pace.png"), imagetype="png",
+                          output = TRUE,
+                          fill = myCol,
+                          fontfamily = "sans",
+                          cat.fontfamily = "sans"
+)
+
+
+gene.sets.top <- list(df1 = top.genes.plt.harp$gene, df2 = top.genes.plt.pace$gene)
+gene.sets.top <- list(df1 = gene.out.df.harp$gene, df2 = top.genes.plt.pace$gene)
+
+venn.plot <- venn.diagram(gene.sets.top, 
+                          category.names = c("HARP", "PACE"),
+                          filename = paste0(out.path, "venn_harp_paceTOP.png"), imagetype="png",
+                          output = TRUE,
+                          fill = myCol,
+                          fontfamily = "sans",
+                          cat.fontfamily = "sans"
+)
+
+
+p <- (ggplot(com.harp.pace, aes(x=Rval.harp, y=Rval.pace)) 
+                      + geom_point(alpha=0.3, size=1) 
+                      + theme_bw()  
+                      + sm_statCorr(corr_method = 'spearman', color = '#8DD3C7')
+                      + ggtitle("Correlation of platelet and whole blood correlation for HARP and PACE cohorts")
+                      + xlab("HARP: R value of whole blood VS platelet expression")
+                      + ylab("PACE: R value of whole blood VS platelet expression")
+)
+
+```
+
+```{r}
+
+gene.out.df.harp[, "log2expressiondiff"] <- log2(gene.out.df.harp[,"plt_avg"]/gene.out.df.harp[,"wb_avg"])
+## write out the table
+
+gene.out.df.harp[,"pvalsig"] <- ifelse(gene.out.df.harp[,"Pval"] < 0.05 & gene.out.df.harp[,"Rval"] > 0, "darkred",
+                            ifelse(gene.out.df.harp[,"Pval"] < 0.05 & gene.out.df.harp[,"Rval"] < 0, "lightblue", "grey"))
+
+
+phist <- (ggplot(gene.out.df.harp, aes(x = Rval, fill = pvalsig))
+                    + scale_fill_manual(breaks = c("darkred", "grey", "lightblue"), 
+                                        values = c("darkred", "grey", "lightblue"))
+                    + geom_histogram(color = "black", bins = 100, alpha = 1, position="stack")
+                    + labs(title ="Rvals for WB vs Platelet Expression", fill = "significance" )
+                    + theme_bw()
+)
+
+
+sum(gene.out.df.harp$pvalsig == "darkred")
+sum(gene.out.df.harp$pvalsig == "lightblue")
+sum(gene.out.df.harp$pvalsig == "grey")
+
+```
+
+```{r}
+
+plottable <- data.frame(apply(gene.out.df.pace[,c("wb_avg", "plt_avg", "Rval", "Pval")], 2, as.numeric))
+plottable[,c("wb_avg", "plt_avg")] <- log2(plottable[,c("wb_avg", "plt_avg")]+1)
+rownames(plottable) <- gene.out.df.pace$gene
+
+cortab <- plottable
+cortab[,"p.adj"] <- p.adjust(cortab[,"Pval"], method = "fdr")
+topcortab <- plottable[plottable[,grepl("Pval", colnames(plottable))] < 0.05,]
+topcortab <- topcortab[order(topcortab[,grepl("Rval", colnames(topcortab))], decreasing = TRUE),]
+
+speciesparam <- "Homo sapiens"
+m_t2g_cat <- as.data.frame(msigdbr(species = speciesparam, category = c("C5"))[,c("gs_name", "gene_symbol")])
+enricheroutUP <- enricher(gene = rownames(topcortab[topcortab[,"Rval"] > 0,]), 
+                          qvalueCutoff = 2, pvalueCutoff = 2, minGSSize = 0, maxGSSize = 10000, TERM2GENE = m_t2g_cat)
+enricheroutDN <- enricher(gene = rownames(topcortab[topcortab[,"Rval"] < 0,]), 
+                          qvalueCutoff = 2, pvalueCutoff = 2, minGSSize = 0, maxGSSize = 10000, TERM2GENE = m_t2g_cat)
+
+class(enricheroutUP)
+names(enricheroutUP)
+head(enricheroutUP@result, 10)
+plotEnrich(enricheroutUP@result, showTerms = 20, numChar = 50, y = "Count", orderBy = "P.value")
+barplot(
+  enricheroutUP,
+  x = "Count",
+  color = "p.adjust",
+  showCategory = 8,
+  font.size = 12,
+  title = "",
+  label_format = 30,
+)
+
+```
+
+
+```{r}
+
+outfilepathpace <- "/gpfs/data/abl/home/cather01/rugglesLab/testquantileHARP"
+
+## Ok, so a fundamental question here is what genes are captured in platelet sequencing that are NOT in whole blood
+# So which genes are seen abundantly in platelets, but NOT abundantly in WB
+dir.create(paste0(outfilepathpace, "wb_v_platelet_quantile_analysis/"), showWarnings = FALSE, recursive = TRUE)
+quantilegenetable <- gene.out.df.harp
+rownames(quantilegenetable) <- quantilegenetable$gene
+## Quantile analysis for WB
+quantilegenetable <- within(quantilegenetable, wb_quantile<- as.integer(cut(quantilegenetable[,"wb_avg"], 
+                                                                            quantile(quantilegenetable[,"wb_avg"], probs=0:20/20, na.rm = TRUE), 
+                                                                            include.lowest=TRUE)))
+wb_quantiles <- levels(cut(quantilegenetable[,"wb_avg"], 
+                           quantile(quantilegenetable[,"wb_avg"], probs=0:20/20, na.rm = TRUE), 
+                           include.lowest=TRUE))
+## Quantile analysis for platelet
+quantilegenetable <- within(quantilegenetable, platelet_quantile <- as.integer(cut(quantilegenetable[,"plt_avg"], 
+                                                   quantile(quantilegenetable[,"plt_avg"], probs=0:20/20, na.rm = TRUE), 
+                                                   include.lowest=TRUE)))
+platelet_quantiles <- levels(cut(quantilegenetable[,"plt_avg"], 
+                                quantile(quantilegenetable[,"plt_avg"], probs=0:20/20, na.rm = TRUE), 
+                                include.lowest=TRUE))
+
+## Create a table of quantile pairs to plot
+quantilecomptable <- as.matrix(table(quantilegenetable[,c("platelet_quantile","wb_quantile")]))
+colnames(quantilecomptable) <- paste0("wb_q", colnames(quantilecomptable))
+rownames(quantilecomptable) <- paste0("p_q", rownames(quantilecomptable))
+quantilecomptable <- quantilecomptable[rev(rownames(quantilecomptable)),]
+
+heatmapcolorparam <- colorRamp2(breaks = c(0, 10, 50, 100), c("white", "#ffcccc", "#ff0000", "#b20000"))
+hmout1 <- create_heatmap(counttab = quantilecomptable, scale_data = FALSE, heatmapcolorparam = heatmapcolorparam, addborders = TRUE)
+pdf(paste0(outfilepathpace, "wb_v_platelet_quantile_analysis/", "wb_v_platelet_quantile20_hm.pdf"), useDingbats = FALSE, width = 10, height = 10)
+draw(hmout1[[1]])
+junk <- dev.off()
+write.table(quantilecomptable, paste0(outfilepathpace, "wb_v_platelet_quantile_analysis/", "wb_v_platelet_quantile20_table.csv"), sep = ",", col.names = NA, row.names = TRUE)
+write.table(quantilegenetable, paste0(outfilepathpace, "wb_v_platelet_quantile_analysis/", "wb_v_platelet_stattable_wquantile.csv"), sep = ",", col.names = TRUE, row.names = FALSE)
+
+
+## What is the GSEA for the top 25% of both - the shared corners:
+genesel <- rownames(quantilegenetable[quantilegenetable[,"platelet_quantile"] >= 16 & quantilegenetable[,"wb_quantile"] >= 16, ])
+hypergeo_gsea_out <- hypergeo_genetest(DEseqtable = data.frame(genesel), statcutoffparam = statcutoffparamlist,
+                                      genesetparam = c("C5"), speciesparam = "Homo sapiens")
+hypergeo_outtable <- data.frame(hypergeo_gsea_out[[1]]) ## fucking beautiful - platelets gene sets right at the top
+write.table(hypergeo_outtable, paste0(outfilepathpace, "wb_v_platelet_quantile_analysis/", "wb_v_platelet_hypergeo_topquartile_table.csv"), 
+            sep = ",", col.names = TRUE, row.names = FALSE)
+
+
+
+## So what are these genes that are in the top 1/2 (??) of platelet genes, but lower 1/2 (??) of WB genes
+plateletminquantile <- c(11, 16)
+wbmaxquantile <- c(5)
+quantilecombos <- expand.grid(wbmaxquantile, plateletminquantile)
+colnames(quantilecombos) <- c("wbmaxquantile", "plateletminquantile")
+for (quantilecombonum in seq_len(nrow(quantilecombos))) {
+  ## Select quantile cut offs for wb and platelet
+  plateletminquantile_sel <- quantilecombos[quantilecombonum,"plateletminquantile"]
+  wbmaxquantile_sel <- quantilecombos[quantilecombonum,"wbmaxquantile"]
+  
+  ## Create outpath and select our table and genes
+  outpathsel <- paste0(outfilepathpace,  "wb_v_platelet_quantile_analysis/", "pq", plateletminquantile_sel, "_wq", wbmaxquantile_sel, "/")
+  dir.create(outpathsel, showWarnings = FALSE, recursive = TRUE)
+  tablesel <- quantilegenetable[quantilegenetable[,"platelet_quantile"] >= plateletminquantile_sel &
+                                quantilegenetable[,"wb_quantile"] <= wbmaxquantile_sel, ]
+  write.table(tablesel, paste0(outpathsel, "wb_v_platelet_statable_sel.csv"), sep = ",", col.names = TRUE, row.names = FALSE)
+  genesel <- rownames(tablesel)
+  print(length(genesel))
+  
+  ## Definitely want a gsea for this
+  statcutoffparamlist <- "dummy"
+  hypergeo_gsea_out = hypergeo_genetest(DEseqtable = data.frame(genesel), statcutoffparam = statcutoffparamlist, 
+                                                 genesetparam = c("C5"), speciesparam = "Homo sapiens")
+  hypergeo_outtable <- data.frame(hypergeo_gsea_out[[1]]) ## fucking beautiful - platelets gene sets right at the top
+  write.table(hypergeo_outtable, paste0(outpathsel, "hypergeo_C5_GOI.csv"), sep = ",", col.names = TRUE, row.names = FALSE)
+  
+  ## We want a vizualiation of these genes... and maybe with the correlation values - cause if a gene correlates well, then its not so bad, but if it also correlates poorly, than that matters
+  # So i guess first - lets just get a scatter of these genes colored by the Rvalue
+  pout1 <- scatter_plotter(indata = log2(tablesel[,c("wb_avg", "plt_avg")]+1), colorvar = tablesel[,"Rval",drop=FALSE], plotstats = TRUE,
+                           labsparam = list(title = "PACE WB vs Platelet Expression", x = "WB Expression", y = "Platelet Expression"))
+  pout1 <- pout1 + scale_color_gradient2(low = "darkblue", mid = "white", high = "darkred", limits = c(-1,1))
+  # pout1 <- pout1 + scale_color_gradient(low = "darkblue", high = "darkred", limits = c(-1,1))
+  pdf(paste0(outpathsel, "wb_v_platelet_w_rval_scatter.pdf"))
+  print(pout1)
+  junk <- dev.off()
+  
+  pout2 <- scatter_plotter(indata = log2(tablesel[tablesel[,"Pval"] < 0.05,c("wb_avg", "plt_avg")]+1), 
+                           colorvar = tablesel[tablesel[,"Pval"] < 0.05,"Rval",drop=FALSE], plotstats = TRUE,
+                           labsparam = list(title = "PACE WB vs Platelet Expression", x = "WB Expression", y = "Platelet Expression"))
+  pout2 <- pout2 + scale_color_gradient2(low = "darkblue", mid = "white", high = "darkred", limits = c(-1,1))
+  # pout1 <- pout1 + scale_color_gradient(low = "darkblue", high = "darkred", limits = c(-1,1))
+  pdf(paste0(outpathsel, "wb_v_platelet_w_rval_sigonly_scatter.pdf"))
+  print(pout2)
+  junk <- dev.off()
+  
+}
+
+```
