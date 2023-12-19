@@ -100,82 +100,6 @@ volcano_plot <- function(res2, threshold = 0.01, log2FC_threshold = 1) {
 volcano_plot(res2)
 
 
-```
-
-
-```{r}
-#### Young vs Old ###
-data = read.csv("/gpfs/data/abl/home/cather01/rugglesLab/plt_vs_wb/countmaxtrix_plt.csv", row.names = 1)
-metadata = read.csv("/gpfs/data/abl/home/cather01/rugglesLab/PACE/pace_and_thr_metadata.csv", row.names = 1)
-metadata <- metadata[rownames(metadata) %in% colnames(data), ]
-
-p <- ggplot(metadata, aes(x=age)) + 
-  geom_histogram( fill="#69b3a2", color="#e9ecef", alpha=0.9)+theme_bw()+ scale_x_continuous(breaks = seq(0, 100, 5))
-
-
-# Delete outliers 
-metadata <- as.data.frame(metadata[rownames(metadata) != "PACE011", ])
-data <- data[, colnames(data) != "PACE011"]
-
-#Transform age in young and old
-metadata <- metadata %>%
-  mutate(age_group = ifelse(age < 64, "young", "old"))
-
-
-#Transform column into factor
-met <- as.data.frame(metadata$age_group)
-rownames(met)<-rownames(metadata)
-colnames(met) <- c("age")
-met$age <- as.factor(met$age)
-
-
-unique(met$age)
-young_data <- met[met$age == "young", ]
-old_data <- met[met$age == "old", ]
-length(young_data)
-length(old_data)
-
-
-#Verification
-all(colnames(data) %in% rownames(met))
-all(colnames(data) == rownames(met))
-
-#Construct DESEQ2 object
-dds <- DESeqDataSetFromMatrix(countData = data, 
-                               colData = met,
-                               design = ~ age)
-dds
-
-
-# Filtering 
-dds2 <- rna_preprocessing(dds, "/gpfs/data/abl/home/cather01/rugglesLab/PACE/plt_deseq_preprocess_age")
-dds2
-# Plot histogram with ggplot2
-#Run DESeq
-dds2 <- DESeq(dds2)
-res2 <- results(dds2)
-summary(res2)
-# saveRDS(dds2, "/gpfs/data/abl/home/cather01/rugglesLab/plt_vs_wb/dds_plt.rds")
-
-#Check how many gene are significant
-sum(res2$padj < 0.2, na.rm=TRUE)
-length(which(res2$pvalue < 0.01))
-
-
-## MA plot 
-DESeq2::plotMA(res2)
-
-# Volcano plot
-volcano_plot <- function(res2, threshold = 0.01, log2FC_threshold = 1) {
-  significant <- res2$pvalue < threshold & abs(res2$log2FoldChange) > log2FC_threshold
-  plot(res2$log2FoldChange, -log10(res2$pvalue), pch=20, cex=0.5, col=ifelse(significant, "red", "black"),
-       main="Volcano Plot", xlab="log2 Fold Change", ylab="-log10(pvalue)")
-  abline(h = -log10(threshold), col="blue", lty=2)
-  abline(v = c(-log2FC_threshold, log2FC_threshold), col="blue", lty=2)
-}
-
-# Create the volcano plot
-volcano_plot(res2)
 
 colData(dds2)
 d <- plotCounts(dds2, gene=which.min(res2$padj), intgroup="age", 
@@ -210,8 +134,9 @@ sig<- res.df %>%
 
 data <- as.matrix(sig)
 heatmap(data)
-
 ```
+
+
 
 
 ```{r male_vs_female}
@@ -296,17 +221,17 @@ volcano_plot <- function(res2, threshold = 0.05, log2FC_threshold = 1) {
 volcano_plot(res2)
 
 resultsNames(dds2)
-res_tableOE <- lfcShrink(dds2, coef="sex_Male_vs_Female")
+res_tableOE <- lfcShrink(dds2, coef="age_old_vs_young")
 
 EnhancedVolcano(toptable = res_tableOE,
                 x = "log2FoldChange",
                 y = "padj",
                 lab = rownames(res_tableOE),
-                xlim = c(-10, +10),
-                ylim = c(0, 3),
-                pCutoff = 0.2,
-                pointSize = 2.0,
-                title = "Pseudomonas syringae DC3000 versus mock \n (fold change cutoff = 2, p-value cutoff = 1e-06)"
+                # xlim = c(-5, +5),
+                # ylim = c(0, 10),
+                 pCutoff = 0.2,
+                # pointSize = 2.0,
+                # title = "Pseudomonas syringae DC3000 versus mock \n (fold change cutoff = 2, p-value cutoff = 1e-06)"
                 # legend=c(
                 #   'Not significant',
                 #   'Log2 fold-change (but do not pass p-value cutoff)',
@@ -315,10 +240,8 @@ EnhancedVolcano(toptable = res_tableOE,
                 )
 
 
-
-
-DESeq2::plotMA(res2, ylim=c(-2,5))
-DESeq2::plotMA(res_tableOE, ylim=c(-2,5))
+DESeq2::plotMA(res2)
+DESeq2::plotMA(res_tableOE)
 
 res_tableOE_tb <- res_tableOE %>%
   data.frame() %>%
