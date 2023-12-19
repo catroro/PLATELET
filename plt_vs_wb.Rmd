@@ -13,33 +13,40 @@ for (package in packages.list) {
 }
 sapply(packages.list, library, character.only = TRUE)
 
-source("./ToshCode/rnaseq_processing_functions.R")
-source("./ToshCode/mgc_plotting_functions.R")
-source("./ToshCode/geneset_analysis_functions.R")
+source("/gpfs/home/cather01/platelet/ToshCode/rnaseq_processing_functions.R")
+source("/gpfs/home/cather01/platelet/ToshCode/mgc_plotting_functions.R")
+source("/gpfs/home/cather01/platelet/ToshCode/geneset_analysis_functions.R")
 #install.packages("devtools")
 #devtools::install_github('smin95/smplot2')
 ```
 
 
-```{r load}
-# Read counts data and metadata for HARP cohort
-wb.count.harp <- read.table("./HARP/wb_quant.featurecounts.counts.unstr.txt", sep = "\t", header = TRUE, row.names = 1, comment.char = "")
-plt.count.harp <- read.table("./HARP/plt_quant.featurecounts.counts.unstr.txt", sep = "\t", header = TRUE, row.names = 1, comment.char = "")
-metadata.harp <- read_excel("/gpfs/data/abl/home/cather01/rugglesLab/HARP/Metadata HARP for RNAseq 12_12_2022x.xlsx")
+```{r paths}
+path.harp <- "/gpfs/data/abl/home/cather01/rugglesLab/HARP/"
+path.pace <- "/gpfs/data/abl/home/cather01/rugglesLab/PACE/"
 
-# Read counts data and metadata for PACE cohort
-wb.count.pace <- read.table("./PACE/pace_wb_quant.featurecounts.counts.unstr.txt", sep = "\t", header = TRUE, row.names = 1, comment.char = "")
-plt.count.pace <- read.table("./PACE/pace_platelet_quant.featurecounts.counts.unstr.txt", sep = "\t", header = TRUE, row.names = 1, comment.char = "")
-metadata.pace <- read.csv("/gpfs/data/abl/home/cather01/rugglesLab/PACE/pace_and_thr_metadata.csv")
-
-# Set output path
-out.path = "/gpfs/data/abl/home/cather01/rugglesLab/plt_vs_wb/"
+# out.path.harp <- "/gpfs/data/abl/home/cather01/rugglesLab/HARP/"
+# out.path.pace <- "/gpfs/data/abl/home/cather01/rugglesLab/PACE/"
 
 # Define color palette for plots
 pal <- c("#CAE1FF", "#20B2AA", "#FFA500", "#DC143C", "#8FBC8F", "#36648B", "#8B8B83", "#FFB6C1", "#DA70D6", "#CD5B45", "#FFD39B", "#BDFCC9", "#698B22", "#FFC125", "#AB82FF", "#5E2612", "#F0E68C", "#4876FF", "#00CED1", "#1B9E77", "#D95F02", "#7570B3", "#E7298A", "#66A61E", "#E6AB02", "#A6761D", "#666666","#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00")
 
 
 ```
+
+```{r load}
+# Read counts data and metadata for HARP cohort
+wb.count.harp <- read.table(paste0(path.harp, "DATA/wb_quant.featurecounts.counts.unstr.txt"), sep = "\t", header = TRUE, row.names = 1, comment.char = "")
+plt.count.harp <- read.table(paste0(path.harp,"DATA/plt_quant.featurecounts.counts.unstr.txt"), sep = "\t", header = TRUE, row.names = 1, comment.char = "")
+metadata.harp <- read_excel(paste0(path.harp,"DATA/Metadata HARP for RNAseq 12_12_2022x.xlsx"))
+
+# Read counts data and metadata for PACE cohort
+wb.count.pace <- read.table(paste0(path.pace,"DATA/pace_wb_quant.featurecounts.counts.unstr.txt"), sep = "\t", header = TRUE, row.names = 1, comment.char = "")
+plt.count.pace <- read.table(paste0(path.harp,"DATA/pace_platelet_quant.featurecounts.counts.unstr.txt"), sep = "\t", header = TRUE, row.names = 1, comment.char = "")
+metadata.pace <- read.csv(paste0(path.pace,"DATA/pace_and_thr_metadata.csv"))
+
+```
+
 
 ```{r function}
 
@@ -349,6 +356,7 @@ tabular_data.pace.wb <- top.genes.wb.pace %>%
  do.wb = enrichDO(deg_wb_entrez)
  do.plt = enrichDO(deg_plt_entrez)
 
+ go.wb <- enrichGO(deg_wb_entrez)
  ck <- compareCluster(geneCluster = gene_ids_list, fun = enrichKEGG )   #,  OrgDb='org.Hs.eg.db')
  ck2 <- compareCluster(geneCluster = gene_ids_list, fun = enrichGO,  OrgDb='org.Hs.eg.db')
  

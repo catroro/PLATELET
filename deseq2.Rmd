@@ -141,8 +141,8 @@ heatmap(data)
 
 ```{r male_vs_female}
 #### Male vs Female###
-data = read.csv("/gpfs/data/abl/home/cather01/rugglesLab/plt_vs_wb/countmaxtrix_plt.csv", row.names = 1)
-metadata = read.csv("/gpfs/data/abl/home/cather01/rugglesLab/PACE/pace_and_thr_metadata.csv", row.names = 1)
+data = read.csv(paste0(input.path, "countmatrix_plt_PACE.csv"), row.names = 1)
+metadata = read.csv(paste0(input.path, "pace_and_thr_metadata.csv"), row.names = 1)
 metadata <- metadata[rownames(metadata) %in% colnames(data), ]
 
 p <- ggplot(metadata, aes(x=sex)) + 
@@ -221,7 +221,7 @@ volcano_plot <- function(res2, threshold = 0.05, log2FC_threshold = 1) {
 volcano_plot(res2)
 
 resultsNames(dds2)
-res_tableOE <- lfcShrink(dds2, coef="age_old_vs_young")
+res_tableOE <- lfcShrink(dds2, coef="sex_Male_vs_Female")
 
 EnhancedVolcano(toptable = res_tableOE,
                 x = "log2FoldChange",
