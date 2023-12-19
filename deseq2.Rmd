@@ -255,6 +255,91 @@ list.gene <- get_fc_list(res2)
 df.enri <- rna_enrichment(list.gene,  "/gpfs/data/abl/home/cather01/rugglesLab/PACE/enrich")
 df.gsea <- gsea_analysis(list.gene,  "/gpfs/data/abl/home/cather01/rugglesLab/PACE/gsea_analysis")
 
+
+ # Filter results
+# Filtering 
+dds <- rna_preprocessing(dds, "./")
+
+# Run DESeq
+dds <- DESeq(dds)
+res <- results(dds)
+summary(res)
+
+res.df <- as.data.frame(res)
+res.df <- res.df[(res.df$baseMean > 150) & (abs(res.df$log2FoldChange) > 2),]
+
+# Extract normalized counts for significant genes
+mat <- counts(dds, normalized = TRUE)[rownames(res.df),]
+mat.z <- t(scale(t(mat)))
+
+# Annotate columns (patients) with sex information for the Heatmap function
+Heatmap(mat.z, 
+        cluster_rows = TRUE, 
+        cluster_columns = TRUE, 
+        column_labels = colnames(mat.z), 
+        name = "Z-score",
+        column_title = "Patient",
+        column_dend_reorder = TRUE,
+        column_dend_side = "top",
+        column_title_gp = gpar(fontsize = 9, fontface = "bold"),
+        heatmap_legend_param = list(title = "Z-score"),
+        top_annotation = HeatmapAnnotation(Sex = anno_text(dds$sex, which = "col", rot = 90))
+)
+
+# Generate heatmap using pheatmap with additional customization
+pheatmap(mat.z,
+         cluster_rows = TRUE,
+         cluster_cols = TRUE,
+         labels_col = colnames(mat.z),
+         annotation_col = data.frame(Sex = dds$sex),
+         annotation_colors = list(Sex = c("Male" = "#3498db", "Female" = "#e74c3c")),
+         main = "Gene Expression Heatmap",
+         fontsize_row = 6,
+         fontsize_col = 6,
+         border_color = "white",
+         show_colnames = TRUE,
+         show_rownames = TRUE,
+         cellwidth = 8,
+         cellheight = 6
+)
+
+
+# Log transformation
+mat_log <- log2(mat + 1)  # Adding 1 to avoid log(0)
+
+# Create a pheatmap using log-transformed values
+pheatmap(mat_log,
+         cluster_rows = TRUE,
+         cluster_cols = TRUE,
+         labels_col = colnames(mat_log),
+         annotation_col = data.frame(Sex = dds$sex),
+         annotation_colors = list(Sex = c("Male" = "blue", "Female" = "pink")),
+         main = "Heatmap",
+         fontsize_row = 8,
+         fontsize_col = 8
+)
+
+
+
+## Filter out outliers
+filtered_res.df <- res.df[!(abs(res.df$log2FoldChange) > 10 | res.df$pvalue > 1e-10), ]
+
+# Volcano plot with outliers removed
+volcano_plot <- ggplot(data = filtered_res.df, aes(x = log2FoldChange, y = -log10(pvalue))) +
+  geom_point(size = 2, color = ifelse(abs(filtered_res.df$log2FoldChange) > 2 & filtered_res.df$pvalue < 0.05, "red", "black")) +
+  labs(title = "Volcano Plot (Outliers Removed)", x = "Log2 Fold Change", y = "-log10(p-value)")
+
+print(volcano_plot)
+
+
+# Example MA plot
+ma_plot <- ggplot(res.df, aes(x = log2(baseMean), y = log2FoldChange)) +
+  geom_point(size = 2, color = ifelse(res.df$pvalue < 0.05, "red", "black")) +
+  labs(title = "MA Plot", x = "log2(Average Expression)", y = "log2(Fold Change)")
+
+print(ma_plot)
+
+
 ```
 
 
