@@ -90,13 +90,6 @@ summary(res2)
 sum(res2$padj < 0.2, na.rm=TRUE)
 length(which(res2$pvalue < 0.05))
 
-```
-
-
-
-
-```{r}
-
 resultsNames(dds2)
 res_tableOE <- lfcShrink(dds2, coef="age_old_vs_young")
 
@@ -203,7 +196,6 @@ length(which(res2$pvalue < 0.01))
 
 ## MA plot 
 DESeq2::plotMA(res2)
-
 
 
 resultsNames(dds2)
