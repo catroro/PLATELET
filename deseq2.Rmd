@@ -14,6 +14,7 @@ for (package in packages.list) {
 }
 sapply(packages.list, library, character.only = TRUE)
 source("/gpfs/home/cather01/platelet/matt_deseq_function.R")
+source("/gpfs/home/cather01/platelet/PLATELET/plot_functions.R")
 
 ```
 
@@ -93,88 +94,13 @@ length(which(res2$pvalue < 0.05))
 resultsNames(dds2)
 res_tableOE <- lfcShrink(dds2, coef="age_old_vs_young")
 
-EnhancedVolcano(toptable = res2,
-                x = "log2FoldChange",
-                y = "padj",
-                lab = rownames(res2),
-                # xlim = c(-5, +5),
-                # ylim = c(0, 10),
-                pCutoff = 0.2,
-                FCcutoff = 0.5,
-                # pointSize = 2.0,
-                title = "Young patient (<68) vs old \n Fold change cutoff = 0.5, p-adj cutoff = 0.2",
-                legendLabels=c(
-                  'Not significant',
-                  'Pass Log2 fold-change cutoff',
-                  'Pass p-adj cutoff',
-                  'Pass both p-adj & Log2 fold change')
-                )
-## MA plot 
-DESeq2::plotMA(res2)
 
-colData(dds2)
+volcanoplot(dds2,  "Young patient (<68) vs old", 0.5, 0.2)
+plot_heatmap_zscores_categories(dds2, 0.5, 0.1)
+plot_heatmap_log2FC_categories(dds2, 0.5, 0.1)
 
 
-res.df <- as.data.frame(res2)
-
-
-res.df <- res.df[(res.df$baseMean > 150) & (abs(res.df$log2FoldChange) > 1.3),]
-res.df <- res.df[(res.df$padj < 0.2) & (abs(res.df$log2FoldChange) > 0.5),]
-res.df <- res.df[(abs(res.df$log2FoldChange) > 0.5),]
-res.df <- res.df[(!is.na(res.df$padj) & res.df$padj < 0.1), ]
-
-
-# Extract normalized counts for significant genes
-mat <- counts(dds2, normalized = TRUE)[rownames(res.df),]
-mat.z <- t(scale(t(mat)))
-
-# Annotate columns (patients) with sex information for the Heatmap function
-Heatmap(mat.z, 
-        cluster_rows = TRUE, 
-        cluster_columns = TRUE, 
-        column_labels = colnames(mat.z), 
-        name = "Z-score",
-        column_title = "Patient",
-        column_dend_reorder = TRUE,
-        column_dend_side = "top",
-        column_title_gp = gpar(fontsize = 9, fontface = "bold"),
-        heatmap_legend_param = list(title = "Z-score"),
-        top_annotation = HeatmapAnnotation(Sex = anno_text(dds$sex, which = "col", rot = 90))
-)
-
-# Generate heatmap using pheatmap with additional customization
-pheatmap(mat.z,
-         cluster_rows = TRUE,
-         cluster_cols = TRUE,
-         labels_col = colnames(mat.z),
-         annotation_col = data.frame(Age = dds2$age),
-         annotation_colors = list(Age = c("young" = "#3498db", "old" = "#e74c3c")),
-         main = "Gene Expression Heatmap",
-         border_color = "white",
-         show_colnames = TRUE,
-         show_rownames = TRUE
-)
-
-
-# Log transformation
-mat_log <- log2(mat + 1)  # Adding 1 to avoid log(0)
-
-# Create a pheatmap using log-transformed values
-pheatmap(mat_log,
-         cluster_rows = TRUE,
-         cluster_cols = TRUE,
-         labels_col = colnames(mat_log),
-         annotation_col = data.frame(Age = dds2$age),
-         annotation_colors = list(Age = c("young" = "blue", "old" = "pink")),
-         main = "Heatmap",
-         fontsize_row = 8,
-         fontsize_col = 8
-)
-
-
-
-
-
+# Error in results(dds) : couldn't find results. you should first run DESeq()
 ```
 
 
@@ -226,7 +152,6 @@ dds <- DESeqDataSetFromMatrix(countData = data,
                                design = ~ sex)
 dds
 
-
  # Filter results
 # Filtering 
 dds <- rna_preprocessing(dds, "./")
@@ -238,75 +163,10 @@ summary(res)
 
 sum(res$padj < 0.2, na.rm=TRUE)
 
-EnhancedVolcano(toptable = res,
-                x = "log2FoldChange",
-                y = "padj",
-                lab = rownames(res),
-                 xlim = c(-4, +8),
-                 ylim = c(0, 10),
-                pCutoff = 0.2,
-                FCcutoff = 0.5,
-                # pointSize = 2.0,
-                title = "Male vs female patient \n Fold change cutoff = 0.5, p-adj cutoff = 0.2",
-                legendLabels=c(
-                  'Not significant',
-                  'Pass Log2 fold-change cutoff',
-                  'Pass p-adj cutoff',
-                  'Pass both p-adj & Log2 fold change')
-                )
-res.df <- as.data.frame(res)
-na.omit(res.df)
-res.df <- res.df[(res.df$padj < 0.02) & (abs(res.df$log2FoldChange) > 0.5),]
-res.df <- res.df[(abs(res.df$log2FoldChange) > 2),]
-res.df <- res.df[(!is.na(res.df$padj) & res.df$padj < 0.05), ]
 
-# Extract normalized counts for significant genes
-mat <- counts(dds, normalized = TRUE)[rownames(res.df),]
-mat.z <- t(scale(t(mat)))
-
-# Annotate columns (patients) with sex information for the Heatmap function
-Heatmap(mat.z, 
-        cluster_rows = TRUE, 
-        cluster_columns = TRUE, 
-        column_labels = colnames(mat.z), 
-        name = "Z-score",
-        column_title = "Patient",
-        column_dend_reorder = TRUE,
-        column_dend_side = "top",
-        column_title_gp = gpar(fontsize = 9, fontface = "bold"),
-        heatmap_legend_param = list(title = "Z-score"),
-        top_annotation = HeatmapAnnotation(Sex = anno_text(dds$sex, which = "col", rot = 90))
-)
-
-# Generate heatmap using pheatmap with additional customization
-pheatmap(mat.z,
-         cluster_rows = TRUE,
-         cluster_cols = TRUE,
-         labels_col = colnames(mat.z),
-         annotation_col = data.frame(Sex = dds$sex),
-         annotation_colors = list(Sex = c("Male" = "#3498db", "Female" = "#e74c3c")),
-         main = "Gene Expression Heatmap",
-         border_color = "white",
-         show_colnames = TRUE,
-         show_rownames = TRUE
-)
-
-
-# Log transformation
-mat_log <- log2(mat + 1)  # Adding 1 to avoid log(0)
-
-# Create a pheatmap using log-transformed values
-pheatmap(mat_log,
-         cluster_rows = TRUE,
-         cluster_cols = TRUE,
-         labels_col = colnames(mat_log),
-         annotation_col = data.frame(Sex = dds$sex),
-         annotation_colors = list(Sex = c("Male" = "blue", "Female" = "pink")),
-         main = "Heatmap",
-         fontsize_row = 8,
-         fontsize_col = 8
-)
-
+volcanoplot(dds,  "Male vs female patient", 0.5, 0.2)
+plot_heatmap_zscores_categories(dds, 2, 0.05)
+plot_heatmap_log2FC_categories(dds, 2, 0.05)
 
 
 ## Filter out outliers
