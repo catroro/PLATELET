@@ -31,7 +31,13 @@ metadata <- metadata[rownames(metadata) %in% colnames(data), ]
 
 # check the distribution 
 p <- ggplot(metadata, aes(x=age)) + 
-  geom_histogram( fill="#69b3a2", color="#e9ecef", alpha=0.9)+theme_bw()+ scale_x_continuous(breaks = seq(0, 100, 5))
+  geom_histogram(fill="#69b3a2", color="#e9ecef", alpha=0.9, bins = 20) +
+  theme_bw() +
+  scale_x_continuous(breaks = seq(0, 100, 5)) +
+  labs(title = "Distribution of Ages",
+       x = "Age",
+       y = "Frequency") +
+  theme_minimal()
 
 # Delete outliers 
 metadata <- as.data.frame(metadata[rownames(metadata) != "PACE011", ])
@@ -67,7 +73,7 @@ dds
 
 #pre filtering --> removing rows with low gene counts
 # keeping rows that have at least 10 reads total
-dds2 <- rna_preprocessing(dds, "/gpfs/data/abl/home/cather01/rugglesLab/PACE/plt_deseq_preprocess")
+dds2 <- rna_preprocessing(dds, paste0(output.path,"plt_deseq_preprocess_age"))
 
 
 #Set the factor level (3 level = 3 categories d'ages)
@@ -112,8 +118,6 @@ data = read.csv(paste0(input.path, "countmatrix_plt_PACE.csv"), row.names = 1)
 metadata = read.csv(paste0(input.path, "pace_and_thr_metadata.csv"), row.names = 1)
 metadata <- metadata[rownames(metadata) %in% colnames(data), ]
 
-p <- ggplot(metadata, aes(x=sex)) + 
-  geom_histogram( fill="#69b3a2", color="#e9ecef", alpha=0.9)+theme_bw()+ scale_x_continuous(breaks = seq(0, 100, 5))
 names(metadata)
 metadata$patient <- rownames(metadata)
 
@@ -121,13 +125,6 @@ metadata$patient <- rownames(metadata)
 metadata <- as.data.frame(metadata[rownames(metadata) != "PACE011", ])
 data <- data[, colnames(data) != "PACE011"]
 
-out.path <- "/gpfs/data/abl/home/cather01/rugglesLab/"
-tabular.stat.table <- metadata %>%
-  dplyr::select("age", "sex", "ethnicity", "smoking", "bmi", "diabetes","CAD","hypertension", "hyperlipidemia") %>%
-  kbl("html") %>%
-  kable_styling(bootstrap_options = "striped", full_width = F) %>%
-  kable_minimal() %>%
-  save_kable(paste0(out.path, "stat_table.html"))
 
 #Transform column into factor
 met <- as.data.frame(metadata$sex)
@@ -152,9 +149,8 @@ dds <- DESeqDataSetFromMatrix(countData = data,
                                design = ~ sex)
 dds
 
- # Filter results
 # Filtering 
-dds <- rna_preprocessing(dds, "./")
+dds <- rna_preprocessing(dds, paste0(output.path,"plt_deseq_preprocess_age"))
 
 # Run DESeq
 dds <- DESeq(dds)
@@ -172,25 +168,20 @@ plot_heatmap_log2FC_categories(dds, 2, 0.05)
 ## Filter out outliers
 filtered_res.df <- res.df[!(abs(res.df$log2FoldChange) > 10 | res.df$pvalue > 1e-10), ]
 
-# Volcano plot with outliers removed
-volcano_plot <- ggplot(data = filtered_res.df, aes(x = log2FoldChange, y = -log10(pvalue))) +
-  geom_point(size = 2, color = ifelse(abs(filtered_res.df$log2FoldChange) > 2 & filtered_res.df$pvalue < 0.05, "red", "black")) +
-  labs(title = "Volcano Plot (Outliers Removed)", x = "Log2 Fold Change", y = "-log10(p-value)")
-
-print(volcano_plot)
-
-
-# Example MA plot
-ma_plot <- ggplot(res.df, aes(x = log2(baseMean), y = log2FoldChange)) +
-  geom_point(size = 2, color = ifelse(res.df$pvalue < 0.05, "red", "black")) +
-  labs(title = "MA Plot", x = "log2(Average Expression)", y = "log2(Fold Change)")
-
-print(ma_plot)
-
 
 ```
+
+
+
 ```{r else}
 
+out.path <- "/gpfs/data/abl/home/cather01/rugglesLab/"
+tabular.stat.table <- metadata %>%
+  dplyr::select("age", "sex", "ethnicity", "smoking", "bmi", "diabetes","CAD","hypertension", "hyperlipidemia") %>%
+  kbl("html") %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  kable_minimal() %>%
+  save_kable(paste0(out.path, "stat_table.html"))
 
 # Filtering 
 dds2 <- rna_preprocessing(dds, "/gpfs/data/abl/home/cather01/rugglesLab/PACE/plt_deseq_preprocess")
