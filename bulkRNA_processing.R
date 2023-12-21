@@ -23,6 +23,7 @@
 library(dplyr)
 library(ggplot2)
 library(DESeq2)
+library(reader)
 
 
 
@@ -40,7 +41,7 @@ library(DESeq2)
 #   padj_cutoff: p-adjusted threshold
 # Outputs:
 #   list: 
-QC.filter.readcount <- function(raw.count.df, min.read.cutoff,out.file.path) {
+QC.filter.readcount <- function(raw.count.df, min.read.cutoff,out.path) {
   
   # Create a data frame for read count summary
   read.count.summary <- data.frame(sample.read.sum = colSums(raw.count.df))
@@ -50,7 +51,7 @@ QC.filter.readcount <- function(raw.count.df, min.read.cutoff,out.file.path) {
                       + ggtitle("Counts for total reads per Sample prefilter")
                       + labs(x = "Number of reads in Sample", y = "Count")
                       + theme_bw())
-  ggsave(file.path(out.file.path, "prefiltered_samp_readcount_hist.pdf"), pre.filter.plot)
+  ggsave(cat.path(out.path, "prefiltered_samp_readcount_hist.pdf"), pre.filter.plot)
   
   # Select samples with read counts greater than min.read.cutoff
   # Save the filtered count table and the read count summary as metadata
@@ -62,7 +63,7 @@ QC.filter.readcount <- function(raw.count.df, min.read.cutoff,out.file.path) {
                     + ggtitle("Counts for total reads per Sample postfilter")
                     + labs(x = "Number of reads in Sample", y = "Count")
                     + theme_bw())
-  ggsave(file.path(out.file.path, "postfiltered_samp_readcount_hist.pdf"), pre.filter.plot)
+  ggsave(cat.path(out.path, "postfiltered_samp_readcount_hist.pdf"), pre.filter.plot)
   
   # Print the dimensions of the filtered count table
   print(dim(count.tab.filt))
@@ -86,7 +87,7 @@ QC.filter.readcount <- function(raw.count.df, min.read.cutoff,out.file.path) {
 #   padj_cutoff: p-adjusted threshold
 # Outputs:
 #   list: 
-QC.filter.genecount <- function(count.tab.filt2, min.count.cutoff, min.samples.cutoff,out.file.path) {
+QC.filter.genecount <- function(count.tab.filt2, min.count.cutoff, min.samples.cutoff,out.path) {
   
   # Create a data frame for gene means
   gene.means.data <- data.frame(genemeans = log2(rowMeans(count.tab.filt2)))
@@ -100,7 +101,7 @@ QC.filter.genecount <- function(count.tab.filt2, min.count.cutoff, min.samples.c
     + theme_bw())
   # Applying pre-filtering: Minimum value of min.count.cutoff in at least min.samples.cutoff of samples
   count.tab.filt <- count.tab.filt2[rowSums(count.tab.filt2 >= min.count.cutoff) >= min.samples.cutoff,]
-  ggsave(file.path(out.file.path, "prefiltered_gene_rowmeans_hist.pdf"), pre.filter.plot)
+  ggsave(cat.path(out.path, "prefiltered_gene_rowmeans_hist.pdf"), pre.filter.plot)
   
   # Create a data frame for post-filtering gene means
   post.filter.data <- data.frame(genemeans = log2(rowMeans(count.tab.filt)))
@@ -112,7 +113,7 @@ QC.filter.genecount <- function(count.tab.filt2, min.count.cutoff, min.samples.c
     + ggtitle("Counts for rowMeans per Gene postfilter")
     + labs(x = "log2(RowMean)", y = "Count")
     + theme_bw())
-  ggsave(file.path(out.file.path, "postfiltered_gene_rowmeans_hist.pdf"), post.filter.plot)
+  ggsave(cat.path(out.path, "postfiltered_gene_rowmeans_hist.pdf"), post.filter.plot)
   
   # Print the dimensions of the filtered count table
   print(dim(count.tab.filt))
@@ -130,7 +131,7 @@ QC.filter.genecount <- function(count.tab.filt2, min.count.cutoff, min.samples.c
 #   padj_cutoff: p-adjusted threshold
 # Outputs:
 #   list:
-DEseq.Normalization <- function(count.table, meta.table, out.file.path) {
+DEseq.Normalization <- function(count.table, meta.table, out.path) {
   
   # Create DESeqDataSet and perform normalization
   dds <- DESeqDataSetFromMatrix(countData = count.table, colData = meta.table, design = ~ 1)
@@ -148,7 +149,7 @@ DEseq.Normalization <- function(count.table, meta.table, out.file.path) {
     + ggtitle("Raw counts per Sample")
     + labs(x = "Reads in sample", y = "Count")
     + theme_bw())
-  ggsave(file.path(out.file.path, "raw_count_per_sample_grid1.pdf"), p)
+  ggsave(cat.path(out.path, "raw_count_per_sample_grid1.pdf"), p)
   
   # Histogram for normalized data
   p2 <- (ggplot(data =  as.data.frame(raw.v.norm.tab), aes(x=normcount)) 
@@ -156,7 +157,7 @@ DEseq.Normalization <- function(count.table, meta.table, out.file.path) {
     + ggtitle("Normalized counts per Sample")
     + labs(x = "Reads in sample", y = "Count")
     + theme_bw())
-  ggsave(file.path(out.file.path, "norm_count_per_sample_grid2.pdf"), p2)
+  ggsave(cat.path(out.path, "norm_count_per_sample_grid2.pdf"), p2)
   
   
   
@@ -188,13 +189,54 @@ DEseq.Normalization <- function(count.table, meta.table, out.file.path) {
         + ylab("Norm")
   )
   
-  ggsave(file.path(out.file.path, "norm_ratio_per_sample_grid3.pdf"), p3)
+  ggsave(cat.path(out.path, "norm_ratio_per_sample_grid3.pdf"), p3)
   
 
   # Write normalized count table to file
-  write.table(norm.count.tab, file = paste(out.file.path, "normcounttab.txt", sep = ""), sep = "\t",
+  write.table(norm.count.tab, file = paste(out.path, "normcounttab.txt", sep = ""), sep = "\t",
               col.names = NA, row.names = TRUE, quote = FALSE)
   
   # Return a list containing the normalized count table and identified outliers
   return(list(normcounttab = norm.count.tab, deseqnorm_outliers = blowup.samples))
 }
+
+
+
+
+
+
+
+
+calculate.gene.metrics <- function(gene.list, wb.mtx, plt.mtx, path) {
+  gene.out.df <- data.frame()
+  cohort <- tail(unlist(strsplit(path, split = "/")), n = 1)
+  print(cohort)
+  for (gene in gene.list) {
+    wb.gene.expr <- t(wb.mtx[gene, , drop = FALSE])
+    plt.gene.expr <- t(plt.mtx[gene, , drop = FALSE])
+    corr.plt.wb <- corr.test(wb.gene.expr, plt.gene.expr, method = "spearman")
+    
+    gene.out.df <- rbind(gene.out.df, c(gene, mean(wb.gene.expr), mean(plt.gene.expr), corr.plt.wb$r[1, 1], corr.plt.wb$p[1, 1]))
+  }
+  print(dim(gene.out.df))
+  colnames(gene.out.df) <- c("gene", "wb.avg", "plt.avg", "Rval", "Pval")
+  gene.out.df[, c("wb.avg", "plt.avg", "Rval", "Pval")] <- apply(gene.out.df[, c("wb.avg", "plt.avg", "Rval", "Pval")], 2, as.numeric)
+  gene.out.df[, c("wb.avg.log2", "plt.avg.log2")] <- log2(gene.out.df[, c("wb.avg", "plt.avg")] + 1)
+  print(colnames(gene.out.df))
+  
+  title <- paste0(cohort, ": Whole blood expression correlate to platelet expression")
+  p <- ggplot(gene.out.df, aes(x = wb.avg.log2, y = plt.avg.log2)) +
+    geom_point(alpha = 0.3, size = 1) +
+    theme_bw() +
+    sm_statCorr(corr_method = 'spearman', color = '#8DD3C7') +
+    ggtitle(title) +
+    xlab("Whole blood expression (log2)") +
+    ylab("Platelet expression (log2)")
+  print(p)
+  print(cat.path(path, "shared.genes.post.process.csv"))
+  write.csv(gene.out.df, cat.path(path, "shared.genes.post.process.csv"), row.names = FALSE)
+  print(cat.path(path, "scatterplot.plt.wb.pdf"))
+  ggsave(cat.path(path, "scatterplot.plt.wb.pdf"), p)
+  return(gene.out.df)
+}
+

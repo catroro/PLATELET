@@ -5,7 +5,7 @@ date: "2023-11-27"
 ---
 
 ```{r setup, include=FALSE}
-packages.list <- c("psych", "clusterProfiler", "ggplot2", "smplot2", "colorRamp2", "dplyr", "grDevices", "gt", "kableExtra","VennDiagram", "readxl", "ggalluvial", "RColorBrewer","viridis","DOSE", "org.Hs.eg.db", "enrichR")
+packages.list <- c("psych", "clusterProfiler", "ggplot2", "smplot2", "colorRamp2", "dplyr", "grDevices", "gt", "kableExtra","VennDiagram", "readxl", "ggalluvial", "RColorBrewer","viridis","DOSE", "org.Hs.eg.db", "enrichR", "reader")
 for (package in packages.list) {
   if (!require(package, character.only = TRUE)) {
     install.packages(package)
@@ -14,18 +14,16 @@ for (package in packages.list) {
 sapply(packages.list, library, character.only = TRUE)
 
 source("/gpfs/home/cather01/platelet/PLATELET/bulk_rna_processing.R")
-source("/gpfs/home/cather01/platelet/ToshCode/rnaseq_processing_functions.R")
-source("/gpfs/home/cather01/platelet/ToshCode/mgc_plotting_functions.R")
-source("/gpfs/home/cather01/platelet/ToshCode/geneset_analysis_functions.R")
+# source("/gpfs/home/cather01/platelet/ToshCode/rnaseq_processing_functions.R")
+# source("/gpfs/home/cather01/platelet/ToshCode/mgc_plotting_functions.R")
+# source("/gpfs/home/cather01/platelet/ToshCode/geneset_analysis_functions.R")
 #install.packages("devtools")
 #devtools::install_github('smin95/smplot2')
 ```
 
 
 ```{r paths}
-path.harp <- "/gpfs/data/abl/home/cather01/rugglesLab/HARP/"
-path.pace <- "/gpfs/data/abl/home/cather01/rugglesLab/PACE/"
-out.path = "/gpfs/data/abl/home/cather01/rugglesLab/poubelle/"
+out.path = "/gpfs/data/abl/home/cather01/rugglesLab/poubelle"
 
 # out.path.harp <- "/gpfs/data/abl/home/cather01/rugglesLab/HARP/"
 # out.path.pace <- "/gpfs/data/abl/home/cather01/rugglesLab/PACE/"
@@ -49,11 +47,6 @@ metadata.pace <- read.csv(paste0(path.pace,"DATA/pace_and_thr_metadata.csv"))
 
 ```
 
-
-```{r function}
-
-
-```
 
 
 ```{r preprocessing}
@@ -83,23 +76,18 @@ preprocess_and_normalize <- function(count.table, tissue, sample_outfilepath, la
   return(normcounttab)
 }
 
-# Preprocess and normalize for WB
+# Preprocess and normalize for HARP
 wb.norm.count.harp <- preprocess_and_normalize(wb.count.harp, "WB", "harp_preprocessing/harp_wb/", FALSE)
-
-# Preprocess and normalize for Platelet
 plt.norm.count.harp <- preprocess_and_normalize(plt.count.harp, "platelet", "harp_preprocessing/harp_platelet/", FALSE)
 
-
+# Preprocess and normalize for PACE
 wb.norm.count.pace <- preprocess_and_normalize(wb.count.pace, "WB", "pace_preprocessing/pace_wb/", FALSE)
-
-# Preprocess and normalize for Platelet
 plt.count.pace <- plt.count.pace[,grepl("PACE", colnames(plt.count.pace))] ## GRABBING ONLY PACE SAMPLES
 plt.norm.count.pace <- preprocess_and_normalize(plt.count.pace, "platelet", "pace_preprocessing/pace_platelet/", FALSE)
 
 
 dim(plt.norm.count.pace)
 dim(wb.norm.count.pace)
-colnames(wb.norm.count.pace)
 ```
 
 ```{r sharedFeatures}
@@ -126,6 +114,7 @@ shared.wb.mtx.harp <- wb.norm.count.harp[shared.genes.harp, shared.samples.harp]
 shared.plt.mtx.harp <- plt.norm.count.harp[shared.genes.harp, shared.samples.harp]
 
 
+
 # Create a directory for HARP analyses (if it doesn't exist)
 dir.create(paste0(out.path, "harp_analyses/"), showWarnings = FALSE, recursive = TRUE)
 dir.create(paste0(out.path, "pace_analyses/"), showWarnings = FALSE, recursive = TRUE)
@@ -146,68 +135,17 @@ dim(shared.wb.mtx.pace)
 
 ```
 
-
 ```{r sharedAnalysis}
+path.harp <- cat.path(out.path, "HARP")
+path.pace <- cat.path(out.path, "PACE")
+dir.create(path.harp, showWarnings = FALSE, recursive = TRUE)  # Filter for Read Count
+dir.create(path.pace, showWarnings = FALSE, recursive = TRUE)  # Filter for Read Count
 
-
-gene.out.df.harp <- data.frame()
-gene.out.df.pace <- data.frame()
-
-
-for (gene in shared.genes.pace) {
-    wb.gene.expr.pace <- t(shared.wb.mtx.pace[gene,,drop=FALSE])
-    plt.gene.expr.pace <- t(shared.plt.mtx.pace[gene,,drop=FALSE])
-    corr.plt.wb.pace <- corr.test(wb.gene.expr.pace, plt.gene.expr.pace, method = "spearman")
-    
-    gene.out.df.pace <- rbind(gene.out.df.pace, c(gene, median(wb.gene.expr.pace), median(plt.gene.expr.pace), corr.plt.wb.pace$r[1,1], corr.plt.wb.pace$p[1,1]))
-}
-for (gene in shared.genes.harp) {
-    wb.gene.expr.harp <- t(shared.wb.mtx.harp[gene,,drop=FALSE])
-    plt.gene.expr.harp <- t(shared.plt.mtx.harp[gene,,drop=FALSE])
-    corr.plt.wb.harp <- corr.test(wb.gene.expr.harp, plt.gene.expr.harp, method = "spearman")
-    
-    gene.out.df.harp <- rbind(gene.out.df.harp, c(gene, median(wb.gene.expr.harp), median(plt.gene.expr.harp), corr.plt.wb.harp$r[1,1], corr.plt.wb.harp$p[1,1]))
-}
-
-
-colnames(gene.out.df.harp) <- c("gene", "wb_avg", "plt_avg", "Rval", "Pval")
-colnames(gene.out.df.pace) <- c("gene", "wb_avg", "plt_avg", "Rval", "Pval")
-
-gene.out.df.harp[,c("wb_avg", "plt_avg", "Rval", "Pval")] <- apply(gene.out.df.harp[,c("wb_avg", "plt_avg", "Rval", "Pval")], 2, as.numeric)
-gene.out.df.pace[,c("wb_avg", "plt_avg", "Rval", "Pval")] <- apply(gene.out.df.pace[,c("wb_avg", "plt_avg", "Rval", "Pval")], 2, as.numeric)
-
-gene.out.df.harp[, c("wb_avg_log2", "plt_avg_log2")] <- log2(gene.out.df.harp[, c("wb_avg", "plt_avg")] + 1)
-gene.out.df.pace[, c("wb_avg_log2", "plt_avg_log2")] <- log2(gene.out.df.pace[, c("wb_avg", "plt_avg")] + 1)
-
-p <- (ggplot(gene.out.df.pace, aes(x=wb_avg_log2, y=plt_avg_log2)) 
-                      + geom_point(alpha=0.3, size=1) 
-                      + theme_bw()  
-                      + sm_statCorr(corr_method = 'spearman', color = '#8DD3C7')
-                      + ggtitle("PACE: Whole blood expression correlate to platelet expression")
-                      + xlab("Whole blood expression (log2)")
-                      + ylab("Platelet expression (log2)")
-)
-
-p2 <- (ggplot(gene.out.df.harp, aes(x=wb_avg_log2, y=plt_avg_log2)) 
-                      + geom_point(alpha=0.3, size=1) 
-                      + theme_bw()  
-                      + sm_statCorr(corr_method = 'spearman', color = '#8DD3C7')
-                      + ggtitle("HARP: Whole blood expression correlate to platelet expression")
-                      + xlab("Whole blood expression (log2)")
-                      + ylab("Platelet expression (log2)")
-)
-
-
-pdf(paste0(out.path, "scatterplot_plt_wb.pdf"))
-print(p)
-print(p2)
-dev.off()
-
-write.csv(gene.out.df.harp, paste0(path.harp, "DATA/shared_genes_post-process.csv"), row.names=FALSE)
-write.csv(gene.out.df.pace, paste0(path.pace, "DATA/shared_genes_post-process.csv"), row.names=FALSE)
+# Calculate gene metrics for PACE and HARP
+gene.out.df.pace <- calculate.gene.metrics(shared.genes.pace, shared.wb.mtx.pace, shared.plt.mtx.pace, path.pace)
+gene.out.df.harp <- calculate.gene.metrics(shared.genes.harp, shared.wb.mtx.harp, shared.plt.mtx.harp, path.harp)
 
 ```
-
 
 
 
