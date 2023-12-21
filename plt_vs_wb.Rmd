@@ -223,101 +223,9 @@ top.gene.enrichment(list.top.genes.pace,path.pace )
 top.gene.enrichment(list.top.genes.harp,path.harp )
 
 
-
 ```
 
-```{r topgenesHARP}
 
-dim(gene.out.df.harp)
-gene.out.df.harp.rank <- gene.out.df.harp %>%
-  mutate(plt_rank = as.integer(rank(-plt_avg)),
-          wb_rank = as.integer(rank(-wb_avg)))
-
-top.genes.wb.harp <- gene.out.df.harp.rank %>%
-  arrange(wb_rank) %>%  # Arrange by absolute value of Rval in descending order
-  slice_head(n = 100) 
-top.genes.plt.harp <- gene.out.df.harp.rank %>%
-  arrange(plt_rank) %>%  # Arrange by absolute value of Rval in descending order
-  slice_head(n = 100) 
-
-
-# nonMatch_Uniquedf1 <- top.genes.plt %>% 
-#   filter(top.genes.plt$gene %in% top.genes.wb$gene) #For df1 values not in df2
-
-plt.genes.sub <- top.genes.plt.harp[, c("gene", "plt_rank", "wb_rank", "plt_avg_log2")]%>%  
-  slice_head(n = 20) 
-nb.cols <- 20
-pal <- colorRampPalette(brewer.pal(8, "Set3"))(nb.cols)
-p <- (ggplot(plt.genes.sub, aes(axis1 = plt_rank, axis2 = wb_rank , y = plt_avg_log2)) 
-                      + geom_alluvium(aes(fill = gene)) 
-                      + geom_stratum(width = 0.2, aes(fill = gene)) 
-                      + theme_bw()  
-                      + labs(x = " ", y = " ") 
-                      + geom_text(stat = "stratum", aes(label = after_stat(stratum)))
-                      + ggtitle("Most higly expressed genes in platelet and whole blood")
-                      + scale_x_continuous( breaks = c(1, 2), labels = c("PLT ranking", "WB ranking"))
-                      + scale_fill_manual(values = pal))
-
-# save_plot(p, "harp_analysis/", "PLTalluvium_plot_ranking.pdf")
-wb.genes.sub <- top.genes.wb.harp[, c("gene", "plt_rank", "wb_rank", "wb_avg_log2")]%>%  
-  slice_head(n = 20) 
-p <- (ggplot(wb.genes.sub, aes(axis1 = wb_rank, axis2 = plt_rank , y = wb_avg_log2)) 
-                      + geom_alluvium(aes(fill = gene)) 
-                      + geom_stratum(width = 0.2, aes(fill = gene)) 
-                      + geom_text(stat = "stratum", aes(label = after_stat(stratum)))
-                      + theme_bw()  
-                      + labs(x = " ", y = " ")                       
-                      + ggtitle("Most higly expressed genes in platelet and whole blood")
-                      + scale_x_discrete( limits = c("WB ranking", "PLT ranking"))
-                      + scale_fill_manual(values = pal))
-
-# save_plot(p, "harp_analysis/", "WBalluvium_plot_ranking.pdf")
-
-
-# Creating a tabular representation
-# tabular_data.harp.plt <- top.genes.plt.harp %>%
-#   dplyr::select(gene,plt_rank, plt_avg,wb_rank, wb_avg) %>%
-#   kbl("html", col.names = c("Gene", "Rank", "Avg expr", "Rank", "Avg expr")) %>%
-#   kable_styling(bootstrap_options = "striped", full_width = F) %>%
-#   add_header_above(c(" " = 1, "Platelet" = 2, "Whole blood" = 2))%>%
-#   kable_minimal()%>%
-#   save_kable(paste0(out.path,"harp_analysis/","PLTtable_topgenes.html"))
-# 
-# 
-# tabular_data.harp.wb <- top.genes.wb.harp %>%
-#   dplyr::select(gene,wb_rank, wb_avg, plt_rank, plt_avg) %>%
-#   kbl("html", col.names = c("Gene", "Rank", "Avg expr", "Rank", "Avg expr")) %>%
-#   kable_styling(bootstrap_options = "striped", full_width = F) %>%
-#   add_header_above(c(" " = 1, "Whole blood" = 2, "Platelet" = 2))%>%
-#   kable_minimal()%>%
-#   save_kable(paste0(out.path,"harp_analysis/","WBtable_topgenes.html"))
-
-
- 
- deg_wb = top.genes.wb.harp$gene
- deg_plt = top.genes.plt.harp$gene
-
- deg_wb_entrez <- (mapIds(org.Hs.eg.db, keys = deg_wb, column = "ENTREZID", keytype = "SYMBOL"))
- deg_plt_entrez <- (mapIds(org.Hs.eg.db, keys = deg_plt, column = "ENTREZID", keytype = "SYMBOL"))
-
-
- go.wb = enrichGO(deg_wb_entrez, OrgDb=org.Hs.eg.db,pvalueCutoff  = 0.05)
- go.plt = enrichGO(deg_plt_entrez, OrgDb=org.Hs.eg.db,pvalueCutoff  = 0.05)
-
- kegg.wb = enrichKEGG(deg_wb_entrez, pvalueCutoff  = 0.05)
- kegg.plt = enrichKEGG(deg_plt_entrez, pvalueCutoff  = 0.05)
- # gene_ids_list <- list(wb = deg_wb_entrez, plt = deg_plt_entrez)
- # ck <- compareCluster(geneCluster = gene_ids_list, fun = enrichKEGG )   #,  OrgDb='org.Hs.eg.db')
- # ck2 <- compareCluster(geneCluster = gene_ids_list, fun = enrichGO,  OrgDb='org.Hs.eg.db')
- # dotplot(ck2, showCategory=20)
- # dotplot(ck, showCategory=20)
- 
-  dotplot(kegg.wb, showCategory=20, title = "KEGG - whole blood")
-  dotplot(kegg.plt, showCategory=20, title = "KEGG - platelet")
-  dotplot(go.wb, showCategory=20, title = "GO - whole blood")
-  dotplot(go.plt, showCategory=10, title = "GO - platelet") 
-
-```
 
 
 ```{r comparisonHARPPACE}
@@ -549,5 +457,60 @@ for (quantilecombonum in seq_len(nrow(quantilecombos))) {
   junk <- dev.off()
   
 }
+
+```
+
+
+```{r }
+# Function for quantile analysis
+
+
+performQuantileAnalysis <- function(data, column, outputDir) {
+  # Check if the column contains numeric values
+  if (!is.numeric(data[[column]])) {
+    stop("The specified column must contain numeric values.")
+  }
+
+  # Convert the column to numeric
+  data[[column]] <- as.numeric(data[[column]])
+
+  quantiles <- as.integer(cut(data[[column]], quantile(data[[column]], probs = 0:20/20, na.rm = TRUE), include.lowest = TRUE))
+  quantileLevels <- levels(cut(data[[column]], quantile(data[[column]], probs = 0:20/20, na.rm = TRUE), include.lowest = TRUE))
+
+  data[[paste0(column, "_quantile")]] <- quantiles
+  print(data)
+  
+  
+  quantileComboTable <- table(data$platelet_quantile, data$wb_quantile)
+      print(quantileComboTable)
+
+  colnames(quantileComboTable) <- paste0("wb_q", colnames(quantileComboTable))
+  
+  rownames(quantileComboTable) <- paste0("p_q", rownames(quantileComboTable))
+  quantileComboTable <- quantileComboTable[rev(rownames(quantileComboTable)),]
+
+  heatmapColorParam <- colorRamp2(breaks = c(0, 10, 50, 100), c("white", "#ffcccc", "#ff0000", "#b20000"))
+  heatmap <- create_heatmap(counttab = quantileComboTable, scale_data = FALSE, heatmapcolorparam = heatmapColorParam, addborders = TRUE)
+
+  pdf(file.path(outputDir, paste0(column, "_quantile_hm.pdf")), useDingbats = FALSE, width = 10, height = 10)
+  draw(heatmap[[1]])
+  dev.off()
+
+  write.table(quantileComboTable, file.path(outputDir, paste0(column, "_quantile_table.csv")), sep = ",", col.names = NA, row.names = TRUE)
+}
+
+
+# Set the output path
+quantile.path <-cat.path(out.path, "quantile")
+
+# Create directory
+dir.create(file.path(quantile.path, "wb_v_platelet_quantile_analysis/"), showWarnings = FALSE, recursive = TRUE)
+
+# Perform quantile analysis for WB
+performQuantileAnalysis(gene.out.df.harp, "wb.avg", cat.path(quantile.path, "wb_v_platelet_quantile_analysis/"))
+
+# Perform quantile analysis for platelet
+performQuantileAnalysis(gene.out.df.harp, "plt_avg", cat.path(quantile.path, "wb_v_platelet_quantile_analysis/"))
+
 
 ```
