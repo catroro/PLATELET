@@ -13,6 +13,7 @@ for (package in packages.list) {
 }
 sapply(packages.list, library, character.only = TRUE)
 
+source("/gpfs/home/cather01/platelet/PLATELET/bulk_rna_processing.R")
 source("/gpfs/home/cather01/platelet/ToshCode/rnaseq_processing_functions.R")
 source("/gpfs/home/cather01/platelet/ToshCode/mgc_plotting_functions.R")
 source("/gpfs/home/cather01/platelet/ToshCode/geneset_analysis_functions.R")
@@ -51,12 +52,7 @@ metadata.pace <- read.csv(paste0(path.pace,"DATA/pace_and_thr_metadata.csv"))
 
 ```{r function}
 
-# Define the function to save plots
-save_plot <- function(plot, cohort, filename) {
-  print(paste0(out.path, cohort))
-  dir.create(paste0(out.path, cohort), showWarnings = FALSE, recursive = TRUE)
-  ggsave(paste0(out.path, cohort, filename), plot, width = 8, height = 6)
-}
+
 ```
 
 
@@ -65,26 +61,23 @@ save_plot <- function(plot, cohort, filename) {
 # Function for preprocessing and normalization
 preprocess_and_normalize <- function(count.table, tissue, sample_outfilepath, label_extreme_changes) {
   # Create output directory
-  dir.create(sample_outfilepath, showWarnings = FALSE, recursive = TRUE)
-  # Filter for Read Count
-  list.filter.read <- QC_filter_readcount(count.table, minreadcutoff = 1000000 )
-
+  sample_outfilepath <- paste0(out.path, sample_outfilepath)
+  dir.create(sample_outfilepath, showWarnings = FALSE, recursive = TRUE)  # Filter for Read Count
+  list.filter.read <- QC.filter.readcount(count.table, 1000000,sample_outfilepath )
   print("QC reads done")
-  save_plot(list.filter.read$prefilterhist, sample_outfilepath, "prefiltered_samp_readcount_hist.pdf")
-  save_plot(list.filter.read$postfilterhist, sample_outfilepath, "postfiltered_samp_readcount_hist.pdf")
-  # Filter for Gene Count
-  minsamplescutoff <- round(ncol(list.filter.read$counttabfilt)/2)
-  list.filter.gene <- QC_filter_genecount(list.filter.read$counttabfilt, mincountcutoff = 8, minsamplescutoff)
-  print("QC genes done")
-  save_plot(list.filter.gene$prefilterhist, sample_outfilepath, "prefiltered_gene_rowmeans_hist.pdf")
-  save_plot(list.filter.gene$postfilterhist, sample_outfilepath, "postfiltered_gene_rowmeans_hist.pdf")
 
+  # Filter for Gene Count
+  minsamplescutoff <- round(ncol(list.filter.read$count.tab.filt)/2)
+  list.filter.gene <-  QC.filter.genecount(list.filter.read$count.tab.filt, 8, minsamplescutoff,sample_outfilepath)
+  print("QC genes done")
+ 
   # Create dummy metadata
-  dummymeta <- data.frame(tissue = rep(tissue, ncol(list.filter.gene$counttabfilt)), row.names = colnames(list.filter.gene$counttabfilt))
+  dummymeta <- data.frame(tissue = rep(tissue, ncol(list.filter.gene$count.tab.filt)), row.names = colnames(list.filter.gene$count.tab.filt))
 
     # DESeq normalization
-  normalization_out <- DEseq_Normalization(list.filter.gene$counttabfilt, dummymeta, sample_outfilepath, label_extreme_changes)
+  normalization_out <-DEseq.Normalization(list.filter.gene$count.tab.filt, dummymeta, sample_outfilepath)
   print("DESeq2 done")
+ 
   # Manually remove extreme outliers
   normcounttab <- normalization_out[[1]][,!colnames(normalization_out[[1]]) %in% rownames(normalization_out$deseqnorm_outliers)]
   return(normcounttab)
