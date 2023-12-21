@@ -240,3 +240,106 @@ calculate.gene.metrics <- function(gene.list, wb.mtx, plt.mtx, path) {
   return(gene.out.df)
 }
 
+
+
+
+
+
+
+# Function to plot genes subset
+plot.genes.sub <- function(top.genes, tissue, path) {
+  # Define column name dynamically based on tissue
+  col <- paste0(tissue, ".avg.log2")
+  
+  # Select top 20 genes
+  genes.sub <- top.genes[, c("gene", "plt_rank", "wb_rank", substitute(col))] %>%  
+    slice_head(n = 20) 
+  
+  # Set up color palette
+  nb.cols <- 20
+  pal <- colorRampPalette(brewer.pal(8, "Set3"))(nb.cols)
+  
+  # Set up labels and plot based on tissue
+  if (tissue == "wb") { 
+    lab <- c("WB ranking", "PLT ranking")
+    plot <- ggplot(genes.sub, aes(axis1 = wb_rank , axis2 = plt_rank, y = genes.sub[, length(genes.sub)]))
+  } else {
+    lab <- c("PLT ranking", "WB ranking")
+    plot <- ggplot(genes.sub, aes(axis1 = plt_rank , axis2 = wb_rank, y = genes.sub[, length(genes.sub)]))
+  }
+  
+  # Create the plot
+  p <- plot +
+    geom_alluvium(aes(fill = gene)) +
+    geom_stratum(width = 0.2, aes(fill = gene)) +
+    theme_bw() +
+    labs(x = " ", y = " ") +
+    geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+    ggtitle("Most highly expressed genes in platelet and whole blood") +
+    scale_x_continuous(breaks = c(1, 2), labels = lab) +
+    scale_fill_manual(values = pal)
+  
+  # Save the plot
+  ggsave(cat.path(path, paste0(tissue, "_alluvium_plot_ranking.pdf")), p)
+  
+  # top.genes.plt.pace %>%
+  #   dplyr::select(gene,plt_rank, plt_avg,wb_rank, wb_avg) %>%
+  #   kbl("html", col.names = c("Gene", "Rank", "Avg expr", "Rank", "Avg expr")) %>%
+  #   kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  #   add_header_above(c(" " = 1, "Platelet" = 2, "Whole blood" = 2))%>%
+  #   kable_minimal()%>%
+  #   save_kable(paste0(out.path, "pace_analysis/", "PLTtable_topgenes.html"))
+}
+
+# Function to analyze top genes
+analyze.top.genes <- function(gene.out.df, path) {
+  # Rank genes based on tissue-specific averages
+  gene.out.df.rank <- gene.out.df %>%
+    mutate(plt_rank = rank(-plt.avg),
+           wb_rank = rank(-wb.avg))
+  
+  # Select top 100 genes for each tissue
+  top.genes.wb <- gene.out.df.rank %>%
+    arrange(wb_rank) %>%
+    slice_head(n = 100) 
+  
+  top.genes.plt <- gene.out.df.rank %>%
+    arrange(plt_rank) %>%  
+    slice_head(n = 100) 
+  
+  # Print top genes for whole blood
+  print(top.genes.wb)
+  
+  # Plot genes for platelet and whole blood
+  plot.genes.sub(top.genes.plt, "plt", path)
+  plot.genes.sub(top.genes.wb, "wb", path)
+  return(list("wb"= top.genes.wb, "plt"= top.genes.plt))
+}
+
+
+
+top.gene.enrichment <- function(top.genes.list,path){
+  
+  deg_wb = top.genes.list$wb$gene
+  deg_plt = top.genes.list$plt$gene
+  
+  deg_wb_entrez <- (mapIds(org.Hs.eg.db, keys = deg_wb, column = "ENTREZID", keytype = "SYMBOL"))
+  deg_plt_entrez <- (mapIds(org.Hs.eg.db, keys = deg_plt, column = "ENTREZID", keytype = "SYMBOL"))
+  
+  go.wb <- enrichGO(deg_wb_entrez, OrgDb=org.Hs.eg.db,pvalueCutoff  = 0.05)
+  go.plt <- enrichGO(deg_plt_entrez, OrgDb=org.Hs.eg.db,pvalueCutoff  = 0.05)
+  
+  kegg.wb <- enrichKEGG(deg_wb_entrez,pvalueCutoff  = 0.05)
+  kegg.plt <- enrichKEGG(deg_plt_entrez,pvalueCutoff  = 0.05)
+  
+  # gene_ids_list <- list(wb = deg_wb_entrez, plt = deg_plt_entrez)
+  # ck <- compareCluster(geneCluster = gene_ids_list, fun = enrichKEGG )   #,  OrgDb='org.Hs.eg.db')
+  # ck2 <- compareCluster(geneCluster = gene_ids_list, fun = enrichGO,  OrgDb='org.Hs.eg.db')
+  
+  pdf(cat.path(path, "enrichment_analysis.pdf"))
+  print(dotplot(kegg.wb, showCategory=20, title = "KEGG - whole blood"))
+  print(dotplot(kegg.plt, showCategory=20, title = "KEGG - platelet"))
+  print(dotplot(go.wb, showCategory=20, title = "GO - whole blood"))
+  print(dotplot(go.plt, showCategory=10, title = "GO - platelet") )
+  dev.off()
+}

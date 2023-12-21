@@ -13,7 +13,7 @@ for (package in packages.list) {
 }
 sapply(packages.list, library, character.only = TRUE)
 
-source("/gpfs/home/cather01/platelet/PLATELET/bulk_rna_processing.R")
+source("/gpfs/home/cather01/platelet/PLATELET/bulkRNA_processing.R")
 # source("/gpfs/home/cather01/platelet/ToshCode/rnaseq_processing_functions.R")
 # source("/gpfs/home/cather01/platelet/ToshCode/mgc_plotting_functions.R")
 # source("/gpfs/home/cather01/platelet/ToshCode/geneset_analysis_functions.R")
@@ -144,7 +144,6 @@ dir.create(path.pace, showWarnings = FALSE, recursive = TRUE)  # Filter for Read
 # Calculate gene metrics for PACE and HARP
 gene.out.df.pace <- calculate.gene.metrics(shared.genes.pace, shared.wb.mtx.pace, shared.plt.mtx.pace, path.pace)
 gene.out.df.harp <- calculate.gene.metrics(shared.genes.harp, shared.wb.mtx.harp, shared.plt.mtx.harp, path.harp)
-
 ```
 
 
@@ -185,7 +184,7 @@ overall_expression <- function(df){
   }
   # For example, thresholds <- seq(0, 10, by = 1)
   print(paste0("max: ", max(df$plt_avg_log2)))
-  thresholds <- seq(0, 50, by = 0.1)
+  thresholds <- seq(min(df$plt_avg_log2)-3, max(df$plt_avg_log2)+3, by = 0.1)
   df.bin.wb <- bin_genes(df, thresholds,"wb_avg_log2")
   df.bin.wb$avg_log2 <- df.bin.wb$wb_avg_log2
 
@@ -212,93 +211,17 @@ for(plot.name in names(plots.harp)){
 
 ```
 
-```{r topgenesPACE}
-
-dim(gene.out.df.pace)
-
-gene.out.df.pace.rank <- gene.out.df.pace %>%
-  mutate(plt_rank = rank(-plt_avg),
-          wb_rank = rank(-wb_avg))
-
-top.genes.wb.pace <- gene.out.df.pace.rank %>%
-  arrange(wb_rank) %>%  # Arrange by absolute value of Rval in descending order
-  slice_head(n = 100) 
-
-top.genes.plt.pace <- gene.out.df.pace.rank %>%
-  arrange(plt_rank) %>%  
-  slice_head(n = 100) 
+```{r topgenes}
+library(adlift)
 
 
-plt.genes.sub <- top.genes.plt.pace[, c("gene", "plt_rank", "wb_rank", "plt_avg_log2")]%>%  
-  slice_head(n = 20) 
-nb.cols <- 20
-pal <- colorRampPalette(brewer.pal(8, "Set3"))(nb.cols)
-p <- (ggplot(plt.genes.sub, aes(axis1 = plt_rank, axis2 = wb_rank , y = plt_avg_log2)) 
-                      + geom_alluvium(aes(fill = gene)) 
-                      + geom_stratum(width = 0.2, aes(fill = gene)) 
-                      + theme_bw()  
-                      + labs(x = " ", y = " ") 
-                      + geom_text(stat = "stratum", aes(label = after_stat(stratum)))
-                      + ggtitle("Most higly expressed genes in platelet and whole blood")
-                      + scale_x_continuous( breaks = c(1, 2), labels = c("PLT ranking", "WB ranking"))
-                      + scale_fill_manual(values = pal))
+list.top.genes.pace <- analyze.top.genes(gene.out.df.pace, path.pace)
+list.top.genes.harp <- analyze.top.genes(gene.out.df.harp,path.harp)
 
-# save_plot(p, "pace_analysis/", "PLTalluvium_plot_ranking.pdf")
-wb.genes.sub <- top.genes.wb.pace[, c("gene", "plt_rank", "wb_rank", "wb_avg_log2")]%>%  
-  slice_head(n = 20) 
-p <- (ggplot(wb.genes.sub, aes(axis1 = wb_rank, axis2 = plt_rank , y = wb_avg_log2)) 
-                      + geom_alluvium(aes(fill = gene)) 
-                      + geom_stratum(width = 0.2, aes(fill = gene)) 
-                      + geom_text(stat = "stratum", aes(label = after_stat(stratum)))
-                      + theme_bw()  
-                      + labs(x = " ", y = " ")                       
-                      + ggtitle("Most higly expressed genes in platelet and whole blood")
-                      + scale_x_discrete( limits = c("WB ranking", "PLT ranking"))
-                      + scale_fill_manual(values = pal))
 
-# save_plot(p, "pace_analysis/", "WBalluvium_plot_ranking.pdf")
+top.gene.enrichment(list.top.genes.pace,path.pace )
+top.gene.enrichment(list.top.genes.harp,path.harp )
 
-# Creating a tabular representation
-# tabular_data.pace.plt <- top.genes.plt.pace %>%
-#   dplyr::select(gene,plt_rank, plt_avg,wb_rank, wb_avg) %>%
-#   kbl("html", col.names = c("Gene", "Rank", "Avg expr", "Rank", "Avg expr")) %>%
-#   kable_styling(bootstrap_options = "striped", full_width = F) %>%
-#   add_header_above(c(" " = 1, "Platelet" = 2, "Whole blood" = 2))%>%
-#   kable_minimal()%>%
-#   save_kable(paste0(out.path, "pace_analysis/", "PLTtable_topgenes.html"))
-# 
-# 
-# tabular_data.pace.wb <- top.genes.wb.pace %>%
-#   dplyr::select(gene,wb_rank, wb_avg, plt_rank, plt_avg) %>%
-#   kbl("html", col.names = c("Gene", "Rank", "Avg expr", "Rank", "Avg expr")) %>%
-#   kable_styling(bootstrap_options = "striped", full_width = F) %>%
-#   add_header_above(c(" " = 1, "Whole blood" = 2, "Platelet" = 2))%>%
-#   kable_minimal()%>%
-#   save_kable(paste0(out.path,"pace_analysis/", "WBtable_topgenes.html"))
-
- nonMatch_Uniquedf2 <-top.genes.wb.pace %>% 
-   filter( top.genes.wb.pace$gene %in% top.genes.plt.pace$gene) #For df2 values not in df1
-
- 
- deg_wb = top.genes.wb.pace$gene
- deg_plt = top.genes.plt.pace$gene
- deg_wb_entrez <- (mapIds(org.Hs.eg.db, keys = deg_wb, column = "ENTREZID", keytype = "SYMBOL"))
- deg_plt_entrez <- (mapIds(org.Hs.eg.db, keys = deg_plt, column = "ENTREZID", keytype = "SYMBOL"))
-
- go.wb <- enrichGO(deg_wb_entrez, OrgDb=org.Hs.eg.db,pvalueCutoff  = 0.05)
- go.plt <- enrichGO(deg_plt_entrez, OrgDb=org.Hs.eg.db,pvalueCutoff  = 0.05)
-
- kegg.wb <- enrichKEGG(deg_wb_entrez,pvalueCutoff  = 0.05)
- kegg.plt <- enrichKEGG(deg_plt_entrez,pvalueCutoff  = 0.05)
-  
-# gene_ids_list <- list(wb = deg_wb_entrez, plt = deg_plt_entrez)
- # ck <- compareCluster(geneCluster = gene_ids_list, fun = enrichKEGG )   #,  OrgDb='org.Hs.eg.db')
- # ck2 <- compareCluster(geneCluster = gene_ids_list, fun = enrichGO,  OrgDb='org.Hs.eg.db')
- 
-  dotplot(kegg.wb, showCategory=20, title = "KEGG - whole blood")
-  dotplot(kegg.plt, showCategory=20, title = "KEGG - platelet")
-  dotplot(go.wb, showCategory=20, title = "GO - whole blood")
-  dotplot(go.plt, showCategory=10, title = "GO - platelet") 
 
 
 ```
