@@ -47,15 +47,12 @@ plot_heatmap_zscores_categories <- function(dds, log2FC_cutoff = 2, padj_cutoff 
   # Filter data to only keep significant according to cutoff 
   res.df <- res.df[(abs(res.df$log2FoldChange) > log2FC_cutoff) & ((!is.na(res.df$padj) & res.df$padj < padj_cutoff)),]
   print(dim(res.df))
-  
   # Extract normalized counts for significant genes
   mat <- counts(dds, normalized = TRUE)[rownames(res.df),]
   mat.z <- t(scale(t(mat)))
-  
   # Extract categories
   categories <- resultsNames(dds)[[2]]
   categories <- unlist(strsplit(categories, split = "_"))
- 
    p <- pheatmap(mat.z,
          cluster_rows = TRUE,
          cluster_cols = TRUE,

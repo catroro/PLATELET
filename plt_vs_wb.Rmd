@@ -13,7 +13,7 @@ for (package in packages.list) {
 }
 sapply(packages.list, library, character.only = TRUE)
 
-source("/gpfs/home/cather01/platelet/PLATELET/bulkRNA_processing.R")
+source("/gpfs/home/cather01/platelet/PLATELET/bulkRNA_analysis.R")
 # source("/gpfs/home/cather01/platelet/ToshCode/rnaseq_processing_functions.R")
 # source("/gpfs/home/cather01/platelet/ToshCode/mgc_plotting_functions.R")
 # source("/gpfs/home/cather01/platelet/ToshCode/geneset_analysis_functions.R")
@@ -25,8 +25,8 @@ source("/gpfs/home/cather01/platelet/PLATELET/bulkRNA_processing.R")
 ```{r paths}
 out.path = "/gpfs/data/abl/home/cather01/rugglesLab/poubelle"
 
-# out.path.harp <- "/gpfs/data/abl/home/cather01/rugglesLab/HARP/"
-# out.path.pace <- "/gpfs/data/abl/home/cather01/rugglesLab/PACE/"
+out.path.harp <- "/gpfs/data/abl/home/cather01/rugglesLab/HARP/"
+out.path.pace <- "/gpfs/data/abl/home/cather01/rugglesLab/PACE/"
 
 # Define color palette for plots
 pal <- c("#CAE1FF", "#20B2AA", "#FFA500", "#DC143C", "#8FBC8F", "#36648B", "#8B8B83", "#FFB6C1", "#DA70D6", "#CD5B45", "#FFD39B", "#BDFCC9", "#698B22", "#FFC125", "#AB82FF", "#5E2612", "#F0E68C", "#4876FF", "#00CED1", "#1B9E77", "#D95F02", "#7570B3", "#E7298A", "#66A61E", "#E6AB02", "#A6761D", "#666666","#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00")
@@ -36,14 +36,14 @@ pal <- c("#CAE1FF", "#20B2AA", "#FFA500", "#DC143C", "#8FBC8F", "#36648B", "#8B8
 
 ```{r load}
 # Read counts data and metadata for HARP cohort
-wb.count.harp <- read.table(paste0(path.harp, "DATA/wb_quant.featurecounts.counts.unstr.txt"), sep = "\t", header = TRUE, row.names = 1, comment.char = "")
-plt.count.harp <- read.table(paste0(path.harp,"DATA/plt_quant.featurecounts.counts.unstr.txt"), sep = "\t", header = TRUE, row.names = 1, comment.char = "")
-metadata.harp <- read_excel(paste0(path.harp,"DATA/Metadata HARP for RNAseq 12_12_2022x.xlsx"))
+wb.count.harp <- read.table(paste0(out.path.harp, "DATA/wb_quant.featurecounts.counts.unstr.txt"), sep = "\t", header = TRUE, row.names = 1, comment.char = "")
+plt.count.harp <- read.table(paste0(out.path.harp,"DATA/plt_quant.featurecounts.counts.unstr.txt"), sep = "\t", header = TRUE, row.names = 1, comment.char = "")
+metadata.harp <- read_excel(paste0(out.path.harp,"DATA/Metadata HARP for RNAseq 12_12_2022x.xlsx"))
 
 # Read counts data and metadata for PACE cohort
-wb.count.pace <- read.table(paste0(path.pace,"DATA/pace_wb_quant.featurecounts.counts.unstr.txt"), sep = "\t", header = TRUE, row.names = 1, comment.char = "")
-plt.count.pace <- read.table(paste0(path.pace,"DATA/pace_platelet_quant.featurecounts.counts.unstr.txt"), sep = "\t", header = TRUE, row.names = 1, comment.char = "")
-metadata.pace <- read.csv(paste0(path.pace,"DATA/pace_and_thr_metadata.csv"))
+wb.count.pace <- read.table(paste0(out.path.pace,"DATA/pace_wb_quant.featurecounts.counts.unstr.txt"), sep = "\t", header = TRUE, row.names = 1, comment.char = "")
+plt.count.pace <- read.table(paste0(out.path.pace,"DATA/pace_platelet_quant.featurecounts.counts.unstr.txt"), sep = "\t", header = TRUE, row.names = 1, comment.char = "")
+metadata.pace <- read.csv(paste0(out.path.pace,"DATA/pace_and_thr_metadata.csv"))
 
 ```
 
@@ -218,6 +218,15 @@ library(adlift)
 list.top.genes.pace <- analyze.top.genes(gene.out.df.pace, path.pace)
 list.top.genes.harp <- analyze.top.genes(gene.out.df.harp,path.harp)
 
+top.genes.plt.harp<- list.top.genes.harp$plt
+top.genes.wb.harp<- list.top.genes.harp$wb
+top.genes.plt.pace<- list.top.genes.pace$plt
+top.genes.wb.pace <- list.top.genes.pace$wb
+
+write.table(top.genes.plt.harp,paste0(out.path.harp, "DATA/top_genes_plt.csv"), sep = ",", row.names = FALSE)
+write.table(top.genes.wb.harp,paste0(out.path.harp, "DATA/top_genes_wb.csv"), sep = ",", row.names = FALSE)
+write.table(top.genes.plt.pace,paste0(out.path.pace, "DATA/top_genes_plt.csv"), sep = ",", row.names = FALSE)
+write.table(top.genes.wb.pace,paste0(out.path.pace, "DATA/top_genes_wb.csv"), sep = ",", row.names = FALSE)
 
 top.gene.enrichment(list.top.genes.pace,path.pace )
 top.gene.enrichment(list.top.genes.harp,path.harp )
@@ -241,6 +250,7 @@ dim(top.gene.wb.com)
 com.harp.pace <- merge(gene.out.df.harp, gene.out.df.pace, by = "gene", all = TRUE, suffixes = c(".harp", ".pace"))
 com.harp.pace <- na.omit(com.harp.pace)
 dim(com.harp.pace)
+
 
 p <- (ggplot(com.harp.pace, aes(x=wb_avg_log2.harp, y=wb_avg_log2.pace)) 
                       + geom_point(alpha=0.3, size=1) 
@@ -300,6 +310,49 @@ p <- (ggplot(com.harp.pace, aes(x=Rval.harp, y=Rval.pace))
                       + xlab("HARP: R value of whole blood VS platelet expression")
                       + ylab("PACE: R value of whole blood VS platelet expression")
 )
+
+```
+```{r}
+# Assuming com.harp.pace is your data frame containing the correlation values
+
+# Create a new variable indicating the direction of correlation
+com.harp.pace$direction <- ifelse(com.harp.pace$Rval.harp > 0 & com.harp.pace$Rval.pace > 0, "both_up",
+                                  ifelse(com.harp.pace$Rval.harp < 0 & com.harp.pace$Rval.pace < 0, "both_down",
+                                         ifelse(com.harp.pace$Rval.harp > 0 & com.harp.pace$Rval.pace < 0, "harp_up_pace_down",
+                                                ifelse(com.harp.pace$Rval.harp < 0 & com.harp.pace$Rval.pace > 0, "harp_down_pace_up", "uncategorized"))))
+
+# Create a color palette based on the direction
+color_palette <- c("both_up" = "#36648B", "both_down" = "#20B2AA", "harp_up_pace_down" = "#FFA500", "harp_down_pace_up" = "#DC143C", "uncategorized" = "gray")
+
+# Create the modified plot
+p <- ggplot(com.harp.pace, aes(x = Rval.harp, y = Rval.pace, color = direction)) +
+  geom_point(alpha = 0.3, size = 1) +
+  scale_color_manual(values = color_palette) +  # Set the color palette
+  theme_bw() +
+  sm_statCorr(corr_method = 'spearman', color = '#8DD3C7') +
+  ggtitle("Correlation of platelet and whole blood correlation for HARP and PACE cohorts") +
+  xlab("HARP: R value of whole blood VS platelet expression") +
+  ylab("PACE: R value of whole blood VS platelet expression") +
+  theme(axis.line = element_line(color = "black", size = 0.5),  # Add axis lines
+        axis.text = element_text(size = 10),  # Adjust axis text size
+        axis.title = element_text(size = 12, face = "bold"))  # Adjust axis title size
+
+# Add axis at 0,0
+p <- p + geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black")
+
+# Identify the top correlated genes
+top_genes <- com.harp.pace %>%
+  arrange(desc(abs(Rval.harp * Rval.pace))) %>%
+  head(10)
+
+# Add gene names next to their corresponding points
+p <- p + geom_text(data = top_genes, aes(x = Rval.harp, y = Rval.pace, label = gene), size = 3, color = "black", hjust = -0.2, vjust = 0)
+
+# Print the plot
+print(p)
+
+
 
 ```
 
@@ -464,6 +517,14 @@ for (quantilecombonum in seq_len(nrow(quantilecombos))) {
 ```{r }
 # Function for quantile analysis
 
+perform.quantile.analysis <- function(data){
+    quantile.gene.table <- within(data, wb_quantile<- as.integer(cut(quantilegenetable[,"wb_avg"], 
+                                                                            quantile(quantilegenetable[,"wb_avg"], probs=0:20/20, na.rm = TRUE), 
+                                                                            include.lowest=TRUE)))
+wb_quantiles <- levels(cut(quantilegenetable[,"wb_avg"], 
+                           quantile(quantilegenetable[,"wb_avg"], probs=0:20/20, na.rm = TRUE), 
+                           include.lowest=TRUE))
+}
 
 performQuantileAnalysis <- function(data, column, outputDir) {
   # Check if the column contains numeric values

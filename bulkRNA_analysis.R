@@ -19,12 +19,13 @@
 #
 ###########################################################################
 
-
-library(dplyr)
-library(ggplot2)
-library(DESeq2)
-library(reader)
-
+packages.list <- c("dplyr", "ggplot2", "DESeq2","reader")
+for (package in packages.list) {
+  if (!require(package, character.only = TRUE)) {
+    install.packages(package)
+  }
+}
+sapply(packages.list, library, character.only = TRUE)
 
 
 ###########################################################################

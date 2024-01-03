@@ -13,7 +13,7 @@ for (package in packages.list) {
   }
 }
 sapply(packages.list, library, character.only = TRUE)
-source("/gpfs/home/cather01/platelet/matt_deseq_function.R")
+source("/gpfs/home/cather01/platelet/LOCAL/matt_deseq_function.R")
 source("/gpfs/home/cather01/platelet/PLATELET/plot_functions.R")
 
 ```
@@ -23,11 +23,51 @@ input.path <- "/gpfs/data/abl/home/cather01/rugglesLab/PACE/DATA/"
 output.path <- "/gpfs/data/abl/home/cather01/rugglesLab/PACE/"
 ```
 
-```{r young_vs_old}
-#### Young vs Old ###
+```{r load}
+data.wb = read.csv(paste0(input.path, "countmatrix_wb_PACE.csv"), row.names = 1)
 data = read.csv(paste0(input.path, "countmatrix_plt_PACE.csv"), row.names = 1)
+
 metadata = read.csv(paste0(input.path, "pace_and_thr_metadata.csv"), row.names = 1)
 metadata <- metadata[rownames(metadata) %in% colnames(data), ]
+
+# Delete outliers based on the clustering
+metadata <- as.data.frame(metadata[rownames(metadata) != "PACE011", ])
+data <- data[, colnames(data) != "PACE011"]
+data.wb <- data.wb[, colnames(data.wb) != "PACE011"]
+
+
+
+
+```
+
+
+```{r function}
+
+preparation.deseq <- function(data, metadata, category){
+      
+  #Transform column into factor
+  sub.met <- as.data.frame(metadata[, category])
+  rownames(sub.met) <- rownames(metadata)
+  colnames(sub.met) <- c(category)
+  sub.met[,category] <- as.factor(sub.met[,category])
+  
+  cat.option <- unique(sub.met[,category])
+  option1 <- sub.met[sub.met[,category] == cat.option[1], ]
+  option2 <- sub.met[sub.met[,category] == cat.option[2], ]
+  print(paste0(cat.option[1], " number: ", length(option1)))
+  print(paste0(cat.option[2], " number: ", length(option2)))
+  
+  #Verification
+  print(all(colnames(data) %in% rownames(sub.met)))
+  print(all(colnames(data) == rownames(sub.met)))
+
+  return(sub.met)
+}
+
+
+```
+
+```{r PLT_young_vs_old}
 
 # check the distribution 
 p <- ggplot(metadata, aes(x=age)) + 
@@ -39,108 +79,49 @@ p <- ggplot(metadata, aes(x=age)) +
        y = "Frequency") +
   theme_minimal()
 
-# Delete outliers 
-metadata <- as.data.frame(metadata[rownames(metadata) != "PACE011", ])
-data <- data[, colnames(data) != "PACE011"]
 
 #Transform age in young and old
+limit.age = 68
 metadata <- metadata %>%
-  mutate(age_group = ifelse(age < 73, "young", "old"))
-
-#Transform column into factor
-met <- as.data.frame(metadata$age_group)
-rownames(met)<-rownames(metadata)
-colnames(met) <- c("age")
-met$age <- as.factor(met$age)
+  mutate(age.group = ifelse(age < limit.age, "young", "old"))
 
 
-young_data <- met[met$age == "young", ]
-old_data <- met[met$age == "old", ]
-length(young_data)
-length(old_data)
-
-
-#Verification
-all(colnames(data) %in% rownames(met))
-all(colnames(data) == rownames(met))
+sub.meta <- preparation.deseq(data, metadata, "age.group")
 
 #Construct DESEQ2 object
 dds <- DESeqDataSetFromMatrix(countData = data, 
-                               colData = met,
-                               design = ~ age)
-dds
+                               colData = sub.meta,
+                               design = ~ age.group)
 
 
 #pre filtering --> removing rows with low gene counts
 # keeping rows that have at least 10 reads total
-dds2 <- rna_preprocessing(dds, paste0(output.path,"plt_deseq_preprocess_age"))
+dds <- rna_preprocessing(dds, paste0(output.path,"plt_deseq_preprocess_age"))
+
+# Run Deseq2
+dds <- DESeq(dds)
+res <- results(dds)
+summary(res)
 
 
-#Set the factor level (3 level = 3 categories d'ages)
-dds2$age <- relevel(dds$age, ref = "young")
+volcanoplot(dds,  paste0("Young patient (<",limit.age, ") vs old"), 0.5, 0.2)
+plot_heatmap_zscores_categories(dds, 0.5, 0.1)
+plot_heatmap_log2FC_categories(dds, 0.5, 0.1)
 
-
-#Run DESeq
-dds2 <- DESeq(dds2)
-res2 <- results(dds2)
-summary(res2)
-# saveRDS(dds2, "/gpfs/data/abl/home/cather01/rugglesLab/plt_vs_wb/dds_plt.rds")
-
-#Check how many gene are significant
-sum(res2$padj < 0.2, na.rm=TRUE)
-length(which(res2$pvalue < 0.05))
-
-resultsNames(dds2)
-res_tableOE <- lfcShrink(dds2, coef="age_old_vs_young")
-
-
-volcanoplot(dds2,  "Young patient (<68) vs old", 0.5, 0.2)
-plot_heatmap_zscores_categories(dds2, 0.5, 0.1)
-plot_heatmap_log2FC_categories(dds2, 0.5, 0.1)
-
-
-# Error in results(dds) : couldn't find results. you should first run DESeq()
 ```
 
 
-
-
-```{r male_vs_female}
+```{r PLT_male_vs_female}
 #### Male vs Female###
-data = read.csv(paste0(input.path, "countmatrix_plt_PACE.csv"), row.names = 1)
-metadata = read.csv(paste0(input.path, "pace_and_thr_metadata.csv"), row.names = 1)
-metadata <- metadata[rownames(metadata) %in% colnames(data), ]
 
-names(metadata)
-metadata$patient <- rownames(metadata)
-
-# Delete outliers 
-metadata <- as.data.frame(metadata[rownames(metadata) != "PACE011", ])
-data <- data[, colnames(data) != "PACE011"]
+met <- preparation.deseq(data, metadata, "sex")
 
 
-#Transform column into factor
-met <- as.data.frame(metadata$sex)
-rownames(met)<-rownames(metadata)
-colnames(met) <- c("sex")
-met$sex <- as.factor(met$sex)
-
-
-female_data <- met[met$sex == "Female", ]
-male_data <- met[met$sex == "Male", ]
-length(female_data)
-length(male_data)
-
-
-#Verification
-all(colnames(data) %in% rownames(met))
-all(colnames(data) == rownames(met))
 
 #Construct DESEQ2 object
 dds <- DESeqDataSetFromMatrix(countData = data, 
                                colData = met,
                                design = ~ sex)
-dds
 
 # Filtering 
 dds <- rna_preprocessing(dds, paste0(output.path,"plt_deseq_preprocess_age"))
@@ -150,6 +131,7 @@ dds <- DESeq(dds)
 res <- results(dds)
 summary(res)
 
+
 sum(res$padj < 0.2, na.rm=TRUE)
 
 
@@ -157,18 +139,176 @@ volcanoplot(dds,  "Male vs female patient", 0.5, 0.2)
 plot_heatmap_zscores_categories(dds, 2, 0.05)
 plot_heatmap_log2FC_categories(dds, 2, 0.05)
 
+```
 
-## Filter out outliers
-filtered_res.df <- res.df[!(abs(res.df$log2FoldChange) > 10 | res.df$pvalue > 1e-10), ]
 
+```{r WB_young_vs_old}
+#### Male vs Female###
+
+#Transform age in young and old
+limit.age = 68
+metadata <- metadata %>%
+  mutate(age.group = ifelse(age < limit.age, "young", "old"))
+
+
+met.wb <- preparation.deseq(data.wb, metadata, "age.group")
+
+
+#Construct DESEQ2 object
+dds.wb<- DESeqDataSetFromMatrix(countData = data.wb, 
+                               colData = met.wb,
+                               design = ~ age.group)
+
+# Fltering 
+dds.wb <- rna_preprocessing(dds.wb, paste0(output.path,"WB_deseq_preprocess_age"))
+
+# Run DESeq
+dds.wb <- DESeq(dds.wb)
+res.wb <- results(dds.wb)
+summary(res.wb)
+
+sum(res.wb$padj < 0.2, na.rm=TRUE)
+
+
+volcanoplot(dds.wb,  "Young vs Old patient", 0.5, 0.2)
+plot_heatmap_zscores_categories(dds.wb,  0.5, 0.1)
+plot_heatmap_log2FC_categories(dds.wb, 0.5, 0.1)
+
+```
+
+
+```{r WB_male_vs_female}
+#### Male vs Female###
+
+met.wb <- preparation.deseq(data.wb, metadata, "sex")
+
+
+#Construct DESEQ2 object
+dds.wb<- DESeqDataSetFromMatrix(countData = data.wb, 
+                               colData = met.wb,
+                               design = ~ sex)
+
+# Fltering 
+dds.wb <- rna_preprocessing(dds.wb, paste0(output.path,"WB_deseq_preprocess_age"))
+
+# Run DESeq
+dds.wb <- DESeq(dds.wb)
+res.wb <- results(dds.wb)
+summary(res.wb)
+
+sum(res.wb$padj < 0.2, na.rm=TRUE)
+categories <- resultsNames(dds.wb)[[2]]
+
+
+volcanoplot(dds.wb,  "Young vs Old patient", 0.5, 0.2)
+plot_heatmap_zscores_categories(dds.wb, 2, 0.05)
+plot_heatmap_log2FC_categories(dds.wb, 2, 0.05)
 
 ```
 
 
 
+
+
+```{r comp}
+
+res.df <- as.data.frame(res)
+res.df$gene <- rownames(res.df)
+res.wb.df <- as.data.frame(res.wb)
+res.wb.df$gene <- rownames(res.wb.df)
+
+com <- merge(res.wb.df, res.df, by = "gene", all = TRUE, suffixes = c(".wb", ".plt"))
+
+# Define a significance threshold
+threshold <- 0.2
+
+# Create a column 'significant' based on padj values
+com$significant <- ifelse(com$padj.plt < threshold & com$padj.wb < threshold, 'both',
+                          ifelse(com$padj.plt < threshold, 'plt',
+                                 ifelse(com$padj.wb < threshold, 'wb', 'none')))
+
+# Plot
+p <- ggplot(com, aes(x = log2FoldChange.plt, y = log2FoldChange.wb, color = significant)) +
+  geom_point(alpha = 0.6, size = 1) +
+  theme_bw() +
+  ggtitle("Whole blood log2FC correlate to platelet log2FC") +
+  xlab("PLT log2FC") +
+  ylab("WB log2FC") +
+  geom_text_repel(data = subset(com, significant == 'both'), aes(label = gene), 
+                  box.padding = 0.5, point.padding = 0.1, size = 3) +  # Annotate significant genes with repel
+  theme_bw() +  scale_color_manual(name = "Significance",
+                     values = c('plt' = 'red', 'wb' = 'blue', 'both' = 'purple', 'none' = 'grey'),
+                     labels = c('plt' = 'Platelet', 'wb' = 'Whole Blood', 'both' = 'Both', 'none' = 'None')) +
+  theme(legend.position = "right")  # Adjust legend position as needed
+
+p <- p + geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black")
+# Save or display the plot
+print(p)  # Display the plot
+# ggsave("/gpfs/data/abl/home/cather01/rugglesLab/plot_test.pdf", p, width = 8, height = 6)  # Save the plot as an image file
+
+
+
+```
+
+```{r addmeta}
+
+plot_heatmap_log2FC_categories2 <- function(dds, log2FC_cutoff = 2, padj_cutoff = 0.1){
+  res <- results(dds)
+  res.df <- as.data.frame(res)
+  res.df <- res.df[(abs(res.df$log2FoldChange) > log2FC_cutoff) & ((!is.na(res.df$padj) & res.df$padj < padj_cutoff)),]
+
+  
+  # Extract normalized counts for significant genes
+  mat <- counts(dds, normalized = TRUE)[rownames(res.df),]
+  categories <- resultsNames(dds)[[2]]
+  categories <- unlist(strsplit(categories, split = "_"))
+  mat_log <- log2(mat + 1)  # Adding 1 to avoid log(0)
+  
+row_ann = metadata[,c("age_group","sex","smoking","diabetes","hypertension")]
+
+ann_color = list("age_group"=c("young"="red","old"="blue"),
+                 "sex"=c("Female"="green","Male"="white"),
+                 "smoking"= c("Current"="yellow", "Former"="purple", "Never"= "black"),
+                 "diabetes" = c("Yes"="#17A589", "No"= "#A04000"),
+                 "hypertension" = c("Yes"= "#616A6B", "No"= "#F1948A"))
+  # Annotate columns (patients) with sex information for the Heatmap function
+  pheatmap(mat_log,
+           cluster_rows = TRUE,
+           cluster_cols = TRUE,
+           labels_col = colnames(mat_log),
+           annotation_col = row_ann,
+           annotation_colors = ann_color,
+           main = "Heatmap",
+           fontsize_row = 8,
+           fontsize_col = 8
+  )
+}
+
+plot_heatmap_log2FC_categories2(dds, 0.5, 0.1)
+
+
+
+```
+
+
 ```{r else}
 
 out.path <- "/gpfs/data/abl/home/cather01/rugglesLab/"
+
+library(tableone)
+m <- metadata[, c("age", "age_group",	"sex",	"ethnicity",	"smoking",	"bmi",	"diabetes",	"CAD",	"hypertension","hyperlipidemia")]
+tab3 <- CreateTableOne(vars = c("age", "age_group",	"sex",	"ethnicity",	"smoking",	"bmi",	"diabetes",	"CAD",	"hypertension","hyperlipidemia"), strata = "age_group" , data = m)
+print(tab3, formatOptions = list(big.mark = ","))
+
+CreateTableOne(data = m)
+tab3Mat <- print(tab3, quote = FALSE, noSpaces = TRUE, printToggle = FALSE)
+## Save to a CSV file
+write.csv(tab3Mat, file = paste0(out.path, "stat_table_age_68.csv"))
+
+
+
+
 tabular.stat.table <- metadata %>%
   dplyr::select("age", "sex", "ethnicity", "smoking", "bmi", "diabetes","CAD","hypertension", "hyperlipidemia") %>%
   kbl("html") %>%
@@ -198,7 +338,7 @@ length(which(res2$pvalue < 0.01))
 DESeq2::plotMA(res2)
 
 
-resultsNames(dds2)
+resultsNames(dds)
 res_tableOE <- lfcShrink(dds2, coef="sex_Male_vs_Female")
 
 
